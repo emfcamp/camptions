@@ -1,0 +1,27 @@
+{
+  "name": "camptions-backend",
+  "version": "1.0.0",
+  "description": "",
+  "main": "dist/index.js",
+  "type": "module",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "tsc && npm run start",
+    "start": "node dist/index.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/emfcamp/EMF-Camptions.git"
+  },
+  "author": "Ben Lewis",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/emfcamp/EMF-Camptions/issues"
+  },
+  "homepage": "https://github.com/emfcamp/EMF-Camptions#readme",
+  "dependencies": {
+    "@types/express": "^4.17.21",
+    "express": "^4.19.2",
+    "node-fetch": "^3.3.2"
+  }
+}
