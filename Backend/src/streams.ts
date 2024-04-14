@@ -74,12 +74,22 @@ class StreamManager {
 
     async fetchCache() {
         await storage.init();
-        this.captionData = (await storage.getItem(this.config.reference)) || {};
+        this.lastPosition =
+            (await storage.getItem(this.config.reference + "-position")) || 0;
+        this.captionData =
+            (await storage.getItem(this.config.reference + "-data")) || "";
         this.saveCache();
     }
 
     async saveCache() {
-        await storage.setItem(this.config.reference, this.captionData);
+        await storage.setItem(
+            this.config.reference + "-position",
+            this.lastPosition
+        );
+        await storage.setItem(
+            this.config.reference + "-data",
+            this.captionData
+        );
     }
 
     async pollStreamtext() {
