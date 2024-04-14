@@ -1,0 +1,22 @@
+version: "3.8"
+
+services:
+  backend:
+    build:
+      context: Backend
+    volumes:
+      - ./Backend/src:/backend/src
+      - /Backend/node_modules
+    restart: always
+    ports:
+      - "127.0.0.1:3000:3000"
+
+  portal:
+    build:
+      context: .
+    command: nginx -g 'daemon off;'
+    volumes:
+      - ./Portal:/web
+    restart: always
+    ports:
+      - "8080:80"
