@@ -1,5 +1,5 @@
-# emf-camptions
-Node-based caption ingestion &amp; display server
+# camptions
+Node-based caption ingestion and storage server
 
 ## Development
 
@@ -9,7 +9,8 @@ Development containers can be spun up with:
 
 ## Deployment
 
-TBC, possibly as above
+Deployed via https://github.com/emfcamp/camptions-deploy
+Endpoint called via https://github.com/emfcamp/stage-screens
 
 ## Contributors
 
