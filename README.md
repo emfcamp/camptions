@@ -1,16 +1,26 @@
 # camptions
-Node-based caption ingestion and storage server
+Tooling for caption ingestion, storage and display
+
+The portal also handles schedule ingestion and display.
 
 ## Development
 
+### Backend
 Development containers can be spun up with:
+`docker compose up backend --build`
 
-`docker compose up --build`
+### Portal
+Inside portal folder run:
+`npm install`
+`npm run dev`
+
+### Caption Server
+Start with:
+`docker compose up server`
 
 ## Deployment
-
-Deployed via https://github.com/emfcamp/camptions-deploy
-Endpoint called via https://github.com/emfcamp/stage-screens
+Spin everything up with:
+`docker compose up --build`
 
 ## Contributors
 

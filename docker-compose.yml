@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   backend:
     build:
@@ -13,10 +11,18 @@ services:
 
   portal:
     build:
-      context: .
-    command: nginx -g 'daemon off;'
-    volumes:
-      - ./portal:/web
+      context: portal
     restart: always
     ports:
-      - "8080:80"
+      - "127.0.0.1:5173:5173"
+      
+  server:
+    image: ghcr.io/collabora/whisperlive-cpu:latest
+    restart: always
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./model:/root/.cache/
+    stdin_open: true
+    tty: true
+
