@@ -5,6 +5,12 @@ let streamConfig: Array<StreamConfig> = [
     {
         location: "stage-a",
     },
+    {
+        location: "stage-b",
+    },
+    {
+        location: "stage-c",
+    },
 ];
 
 interface StreamConfig {
