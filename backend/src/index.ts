@@ -1,22 +1,30 @@
 import express, { Request, Response } from "express";
+import cors from "cors";
 import { createServer } from "http";
 import { Server } from "socket.io";
 import {
+    locations,
+    LocationType
+} from "./locations";
+import {
     StreamManager,
-    StreamConfig,
     Transcription,
-    streamConfig,
     streamReferences,
     getStream,
 } from "./ingestion";
 const app = express();
+app.use(cors<Request>());
 
 app.get("/", async (req: Request, res: Response) => {
     res.send("emf-camptions service");
 });
 
+app.get("/locations", async (req: Request, res: Response) => {
+    res.send(locations);
+});
+
 // Initialise all stream polling
-streamConfig.forEach((x: StreamConfig) => new StreamManager(x.location));
+locations.forEach((x: LocationType) => new StreamManager(x.location));
 
 app.get("/stream/:reference", async (req: Request, res: Response) => {
     try {

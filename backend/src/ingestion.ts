@@ -1,21 +1,9 @@
 import storage from "node-persist";
 import { io } from "./index";
-
-let streamConfig: Array<StreamConfig> = [
-    {
-        location: "stage-a",
-    },
-    {
-        location: "stage-b",
-    },
-    {
-        location: "stage-c",
-    },
-];
-
-interface StreamConfig {
-    location: string;
-}
+import {
+    locations,
+    LocationType
+} from "./locations";
 
 interface Transcription {
     location: string;
@@ -31,7 +19,7 @@ interface Caption {
 
 interface StreamInstance {
     location: string;
-    config: StreamConfig;
+    config: LocationType;
     instance: StreamManager;
 }
 
@@ -46,13 +34,13 @@ function getStream(location: string) {
 }
 
 class StreamManager {
-    config: StreamConfig;
+    config: LocationType;
     latestCaption: Caption;
     captionData: Array<Caption>;
 
     constructor(location: string) {
-        let config = streamConfig.filter(
-            (x: StreamConfig) => x.location == location
+        let config = locations.filter(
+            (x: LocationType) => x.location == location
         )[0];
         let stream = {
             location: config.location,
@@ -103,9 +91,7 @@ class StreamManager {
 
 export {
     StreamManager,
-    StreamConfig,
     Transcription,
-    streamConfig,
     streamReferences,
     getStream,
 };

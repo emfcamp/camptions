@@ -1,0 +1,62 @@
+@import './base.css';
+
+.page {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 2rem;
+  font-weight: normal;
+}
+
+h1,
+h3 {
+  text-align: center;
+}
+
+.back {
+  text-decoration: none;
+  color: black;
+  background: #adc036;
+  font-size: 20px;
+  padding: 5px 10px;
+  border: 1px solid #000;
+  border-radius: 10px;
+  position: absolute;
+  top: 10px;
+  left: 20px;
+}
+
+.links {
+  text-align: center;
+}
+
+.link {
+  text-decoration: none;
+  color: black;
+  background: #adc036;
+  font-size: 50px;
+  line-height: 100px;
+  padding: 10px 50px;
+  border: 1px solid #000;
+  border-radius: 10px;
+}
+
+#error-bar {
+  text-decoration: none;
+  color: black;
+  background: #f77f02;
+  font-size: 16px;
+  font-weight: bold;
+  padding: 5px 10px;
+  width: 100%;
+  border-top: 2px solid #213018;
+  position: absolute;
+  bottom: 0px;
+  left: 0px;
+}
+
+@media screen and (max-width: 600px) {
+  h1 {
+    font-size: 10vw;
+    margin-top: 25px;
+  }
+}

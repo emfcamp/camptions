@@ -1,10 +1,18 @@
-import { vitePlugin as remix } from "@remix-run/dev";
-import { installGlobals } from "@remix-run/node";
-import { defineConfig } from "vite";
-import tsconfigPaths from "vite-tsconfig-paths";
+import { fileURLToPath, URL } from 'node:url'
 
-installGlobals();
+import { defineConfig } from 'vite'
+import vue from '@vitejs/plugin-vue'
+import vueJsx from '@vitejs/plugin-vue-jsx'
 
+// https://vitejs.dev/config/
 export default defineConfig({
-  plugins: [remix(), tsconfigPaths()],
-});
+  plugins: [
+    vue(),
+    vueJsx(),
+  ],
+  resolve: {
+    alias: {
+      '@': fileURLToPath(new URL('./src', import.meta.url))
+    }
+  }
+})
