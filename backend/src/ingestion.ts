@@ -13,6 +13,7 @@ interface Transcription {
 }
 
 interface Caption {
+    location: string;
     timestamp: string;
     text: string;
 }
@@ -53,6 +54,7 @@ class StreamManager {
         this.config = stream.config;
 
         this.latestCaption = {
+            location: "",
             timestamp: "",
             text: "",
         };
@@ -64,7 +66,7 @@ class StreamManager {
     }
 
     processTranscription(data: Transcription) {
-        let newCaption: Caption = { timestamp: data.timestamp, text: data.text }
+        let newCaption: Caption = { location: data.location, timestamp: data.timestamp, text: data.text }
         if (data.event == "latest") {
             this.latestCaption = newCaption
             io.to(this.config.location).emit("latest", this.latestCaption)

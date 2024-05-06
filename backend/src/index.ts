@@ -20,7 +20,12 @@ app.get("/", async (req: Request, res: Response) => {
 });
 
 app.get("/locations", async (req: Request, res: Response) => {
-    res.send(locations);
+    res.json(locations);
+});
+
+app.get("/captions/:location", async (req: Request, res: Response) => {
+    const captions = getStream(req.params.location).instance.captionData
+    res.json(captions);
 });
 
 // Initialise all stream polling
@@ -52,7 +57,7 @@ const httpServer = createServer(app);
 const io = new Server(httpServer, {
         allowEIO3: true,
         cors: {
-            origin: process.env.CORS_URI,
+            origin: "http://localhost:5173",
             methods: ["GET", "POST"],
         },
     });

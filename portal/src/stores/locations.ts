@@ -28,7 +28,7 @@ export const useLocationsStore = defineStore("locations", {
         this.error = String(error)
       }
     },
-    getLocation(location: String) {
+    getLocation(location: string) {
       return this.locations.find((x: LocationType) => x.location == location)
     }
   },
