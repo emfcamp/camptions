@@ -2,10 +2,12 @@ import { defineStore } from 'pinia'
 import axios from "axios"
 import { io } from "socket.io-client";
 
-interface CaptionData {
-  location: string,
-  latest: Caption,
-  captions: Caption[],
+interface AllCaptions {
+  [location: string]: Caption[]
+}
+
+interface LatestCaptions {
+  [location: string]: Caption
 }
 
 interface Caption {
@@ -21,41 +23,70 @@ export const socket = io(import.meta.env.VITE_API);
 export const useCaptionsStore = defineStore("captions", {
   state: () => {
     return {
-      captions: [] as CaptionData[],
+      captions: {} as AllCaptions,
+      latest: {} as LatestCaptions,
       error: "" as string,
       connected: false,
+      room: "",
+    }
+  },
+  getters: {
+    getRoom(state) {
+      return state.room
     }
   },
   actions: {
     async fetchCaptions(location: string) {
       try {
         const data = await axios.get(import.meta.env.VITE_API + '/captions/' + location)
-        this.captions = data.data
+        this.captions[location] = data.data
         this.error = ""
       } catch (error) {
         this.error = String(error)
       }
     },
-    getData(location: string): CaptionData | undefined {
-      return this.captions.find((x: CaptionData) => x.location == location)
-    },
     getCaptions(location: string): Caption[] {
-      const data = this.getData(location)
-      if (data) {
-        return data.captions.sort(dateSort)
+      if (location in this.captions) {
+        return this.captions[location].sort(dateSort)
       }
       return []
     },
     getLatest(location: string): Caption {
-      const data = this.getData(location)
-      if (data) {
-        return data.latest
+      if (location in this.latest) {
+        return this.latest[location]
       }
       return { location: location, timestamp: "", text: "" }
+    },
+    addCaption(caption: Caption) {
+      this.captions[caption.location].push(caption)
+    },
+    setLatest(caption: Caption) {
+      this.latest[caption.location] = caption
+    },
+    joinRoom(location: string) {
+      this.room = location
+      socket.emit("join", location)
+    },
+    leaveRoom(location: string) {
+      this.room = ""
+      socket.emit("leave", location)
     }
   },
 })
 
-//socket.on("bar", (...args) => {
-//  useCaptionsStore.state.captions.push(args);
-//});
+socket.on("latest", (caption: Caption) => {
+  const store = useCaptionsStore()
+  store.setLatest(caption)
+});
+
+socket.on("add", (caption: Caption) => {
+  const store = useCaptionsStore()
+  store.addCaption(caption)
+});
+
+socket.on("reconnect", () => {
+  const room = useCaptionsStore().getRoom
+  if (room) {
+    socket.emit("join", room)
+  }
+});

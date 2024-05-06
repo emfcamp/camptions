@@ -72,8 +72,9 @@ class StreamManager {
             io.to(this.config.location).emit("latest", this.latestCaption)
         } else if (data.event == "segment") {
             this.captionData.push(newCaption)
-            io.to(this.config.location).emit("next", newCaption)
+            io.to(this.config.location).emit("add", newCaption)
         }
+        return newCaption
     }
 
     async fetchCache() {
@@ -94,6 +95,7 @@ class StreamManager {
 export {
     StreamManager,
     Transcription,
+    Caption,
     streamReferences,
     getStream,
 };

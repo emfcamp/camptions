@@ -1,8 +1,9 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, } from 'vue'
 import { useRoute } from 'vue-router'
 import { useLocationsStore } from '@/stores/locations'
 import { useCaptionsStore } from '@/stores/captions'
+import { onBeforeRouteLeave } from 'vue-router'
 const route = useRoute()
 const locationStore = useLocationsStore()
 const captionStore = useCaptionsStore()
@@ -16,8 +17,12 @@ const captions = computed(() => {
 const latest = computed(() => {
   return captionStore.getLatest(loc)
 })
-onMounted(() => {
+onMounted(async () => {
   captionStore.fetchCaptions(loc)
+  captionStore.joinRoom(loc)
+})
+onBeforeRouteLeave((to, from) => {
+  captionStore.leaveRoom(loc)
 })
 </script>
 
@@ -26,13 +31,13 @@ onMounted(() => {
     <router-link class="back" :to="{ name: 'index' }">back</router-link>
     <div v-if="location">
       <h1>{{ location.name }} Captions</h1>
-      <div v-if="captions.length | latest.text.length">
-        <p v-for="caption in captions" v-bind:key="caption.timestamp">{{ caption.text }}</p>
-        <p>{{ latest.text }}</p>
-      </div>
-      <div v-else>
+      <div v-if="!captions.length && !latest.text">
         <p>There are currently no captions available.</p>
         <p>Please contact the Duty Technician on XXXX if you think there is a problem.</p>
+      </div>
+      <div v-else class="captionbox" ref="captionBox">
+        <span v-if="latest">{{ latest.text }}</span>
+        <span v-for="caption in captions" v-bind:key="caption.timestamp">{{ caption.text }}</span>
       </div>
     </div>
     <div v-else></div>
