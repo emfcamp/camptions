@@ -9,13 +9,17 @@ services:
     ports:
       - "127.0.0.1:3000:3000"
 
-  portal:
+  web:
     build:
-      context: portal
+      context: .
+      target: web
+    command: nginx -g 'daemon off;'
     restart: always
     ports:
-      - "127.0.0.1:5173:5173"
-      
+      - "127.0.0.1:9000:80"
+    depends_on:
+      - backend
+
   server:
     image: ghcr.io/collabora/whisperlive-cpu:latest
     restart: always

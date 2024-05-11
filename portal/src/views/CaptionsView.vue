@@ -33,7 +33,7 @@ onBeforeRouteLeave((to, from) => {
       <h1>{{ location.name }} Captions</h1>
       <div v-if="!captions.length && !latest.text">
         <p>There are currently no captions available.</p>
-        <p>Please contact the Duty Technician on XXXX if you think there is a problem.</p>
+        <p>Please contact the Duty Technician on 1075 if you think there is a problem.</p>
       </div>
       <div v-else class="captionbox" ref="captionBox">
         <span v-if="latest">{{ latest.text }}</span>
