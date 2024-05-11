@@ -5,7 +5,11 @@ import { Server } from "socket.io";
 
 import {
     locations,
-    LocationType
+    LocationType,
+    ServerState,
+    Heartbeat,
+    updateStatus,
+    heartBeat,
 } from "./locations";
 
 import {
@@ -32,7 +36,7 @@ app.get("/captions/:location", async (req: Request, res: Response) => {
     res.json(captions);
 });
 
-locations.forEach((x: LocationType) => new StreamManager(x.location));
+Object.values(locations).forEach((x: LocationType) => new StreamManager(x.location));
 
 app.get("/stream/:reference", async (req: Request, res: Response) => {
     try {
@@ -65,6 +69,9 @@ const io = new Server(httpServer, {
     },
 });
 
+
+
+
 io.on('connection', (socket) => {
     socket.on('transcription', (data: string) => {
         let transcription: Transcription = JSON.parse(data)
@@ -80,6 +87,16 @@ io.on('connection', (socket) => {
     socket.on('leave', (data: string) => {
         if (streamReferences.includes(data)) {
             socket.leave(data);
+        }
+    });
+    socket.on('server', (server_state: ServerState) => {
+        if (streamReferences.includes(server_state.location)) {
+            updateStatus(server_state)
+        }
+    });
+    socket.on('heartbeat', (heartbeat: Heartbeat) => {
+        if (streamReferences.includes(heartbeat.location)) {
+            heartBeat(heartbeat)
         }
     });
 

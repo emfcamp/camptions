@@ -40,9 +40,7 @@ class StreamManager {
     captionData: Array<Caption>;
 
     constructor(location: string) {
-        let config = locations.filter(
-            (x: LocationType) => x.location == location
-        )[0];
+        let config = locations[location];
         let stream = {
             location: config.location,
             config: config,

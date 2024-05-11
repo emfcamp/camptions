@@ -1,15 +1,21 @@
 import { defineStore } from 'pinia'
 import axios from "axios"
+import { socket } from "./captions"
 
 interface LocationType {
   location: string;
   name: string;
+  status: string;
+}
+
+interface Locations {
+  [location: string]: LocationType
 }
 
 export const useLocationsStore = defineStore("locations", {
   state: () => {
     return {
-      locations: [] as LocationType[],
+      locations: {} as Locations,
       error: "" as string,
     }
   },
@@ -29,7 +35,15 @@ export const useLocationsStore = defineStore("locations", {
       }
     },
     getLocation(location: string) {
-      return this.locations.find((x: LocationType) => x.location == location)
-    }
+      return this.locations[location]
+    },
+    updateLocation(location: LocationType) {
+      this.locations[location.location] = location
+    },
   },
 })
+
+socket.on("location", (location: LocationType) => {
+  const store = useLocationsStore()
+  store.updateLocation(location)
+});

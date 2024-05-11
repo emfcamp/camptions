@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, } from 'vue'
+import { computed, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { useLocationsStore } from '@/stores/locations'
 import { useCaptionsStore } from '@/stores/captions'

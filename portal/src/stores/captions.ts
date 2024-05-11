@@ -33,6 +33,9 @@ export const useCaptionsStore = defineStore("captions", {
   getters: {
     getRoom(state) {
       return state.room
+    },
+    isConnected(state) {
+      return state.connected
     }
   },
   actions: {
@@ -75,7 +78,8 @@ export const useCaptionsStore = defineStore("captions", {
 })
 
 socket.on("connect_error", (err) => {
-  console.log(`connect_error due to ${err.message}`);
+  const store = useCaptionsStore()
+  store.connected = false
 });
 
 socket.on("latest", (caption: Caption) => {
@@ -89,8 +93,19 @@ socket.on("add", (caption: Caption) => {
 });
 
 socket.on("reconnect", () => {
-  const room = useCaptionsStore().getRoom
-  if (room) {
-    socket.emit("join", room)
+  const store = useCaptionsStore()
+  if (store.getRoom) {
+    socket.emit("join", store.getRoom)
   }
+  store.connected = true
+});
+
+socket.on("connect", () => {
+  const store = useCaptionsStore()
+  store.connected = true
+});
+
+socket.on("disconnect", () => {
+  const store = useCaptionsStore()
+  store.connected = false
 });
