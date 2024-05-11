@@ -18,7 +18,7 @@ interface Caption {
 
 const dateSort = (a: Caption, b: Caption) => { return new Date(b.timestamp).valueOf() - new Date(a.timestamp).valueOf() }
 
-export const socket = io(import.meta.env.VITE_API);
+export const socket = io(import.meta.env.VITE_WS);
 
 export const useCaptionsStore = defineStore("captions", {
   state: () => {
@@ -73,6 +73,10 @@ export const useCaptionsStore = defineStore("captions", {
     }
   },
 })
+
+socket.on("connect_error", (err) => {
+  console.log(`connect_error due to ${err.message}`);
+});
 
 socket.on("latest", (caption: Caption) => {
   const store = useCaptionsStore()
