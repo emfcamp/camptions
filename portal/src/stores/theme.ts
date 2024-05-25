@@ -4,7 +4,6 @@ const localStorageName = "captionsTheme"
 
 const getMediaPreference = () => {
   const rememberedTheme = localStorage.getItem(localStorageName);
-  console.log(rememberedTheme)
   if (rememberedTheme && ["light", "dark"].includes(rememberedTheme)) {
     console
     return rememberedTheme
@@ -13,7 +12,6 @@ const getMediaPreference = () => {
     "(prefers-color-scheme: dark)"
   ).matches;
   if (hasDarkPreference) {
-    console.log("Dark theme")
     return "dark";
   } else {
     return "light";
@@ -41,7 +39,6 @@ export const useThemeStore = defineStore("theme", {
       localStorage.setItem(localStorageName, this.theme)
     },
     toggleTheme() {
-      console.log("woo")
       this.setTheme(this.theme !== "dark")
     }
   },
