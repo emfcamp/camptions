@@ -13,6 +13,7 @@
   --link-primary-color: #000;
   --link-secondary-color: #055;
   --text-primary-color: #000;
+  --background-captions: rgba(255, 255, 255, 0.5);
 }
 #root.dark {
   --background-color-primary: #1e1e1e;
@@ -20,6 +21,7 @@
   --link-primary-color: #000;
   --link-secondary-color: #fff;
   --text-primary-color: #ddd;
+  --background-captions: rgba(30,30,30,0.9);
 }
 
 #root {
