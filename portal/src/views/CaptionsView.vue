@@ -28,28 +28,31 @@ onBeforeRouteLeave((to, from) => {
 </script>
 
 <template>
-  <nav class="links">
-    <router-link class="link-btn" :to="{ name: 'index' }">
-      <div class="link">
-        <div>
-          <div class="link-icon">⬅</div>back
+  <div>
+    <nav class="links">
+      <router-link class="link-btn" :to="{ name: 'index' }">
+        <div class="link">
+          <div>
+            <div class="link-icon">⬅</div>
+            back
+          </div>
+        </div>
+      </router-link>
+      <ThemeToggle></ThemeToggle>
+    </nav>
+    <main class="page">
+      <div v-if="location">
+        <h1>{{ location.name }} Captions</h1>
+        <div v-if="!captions.length && !latest.text">
+          <p>There are currently no captions available.</p>
+          <p>Please contact the Duty Technician on 1075 if you think there is a problem.</p>
+        </div>
+        <div v-else class="captionbox" ref="captionBox">
+          <span v-if="latest">{{ latest.text }}</span>
+          <span v-for="caption in captions" v-bind:key="caption.timestamp">{{ caption.text }}</span>
         </div>
       </div>
-    </router-link>
-    <ThemeToggle></ThemeToggle>
-  </nav>
-  <main class="page">
-    <div v-if="location">
-      <h1>{{ location.name }} Captions</h1>
-      <div v-if="!captions.length && !latest.text">
-        <p>There are currently no captions available.</p>
-        <p>Please contact the Duty Technician on 1075 if you think there is a problem.</p>
-      </div>
-      <div v-else class="captionbox" ref="captionBox">
-        <span v-if="latest">{{ latest.text }}</span>
-        <span v-for="caption in captions" v-bind:key="caption.timestamp">{{ caption.text }}</span>
-      </div>
-    </div>
-    <div v-else></div>
-  </main>
+      <div v-else></div>
+    </main>
+  </div>
 </template>
