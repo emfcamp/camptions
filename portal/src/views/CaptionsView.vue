@@ -4,6 +4,7 @@ import { useRoute } from 'vue-router'
 import { useLocationsStore } from '@/stores/locations'
 import { useCaptionsStore } from '@/stores/captions'
 import { onBeforeRouteLeave } from 'vue-router'
+import ThemeToggle from '@/components/ThemeToggle.vue'
 const route = useRoute()
 const locationStore = useLocationsStore()
 const captionStore = useCaptionsStore()
@@ -27,8 +28,17 @@ onBeforeRouteLeave((to, from) => {
 </script>
 
 <template>
+  <nav class="links">
+    <router-link class="link-btn" :to="{ name: 'index' }">
+      <div class="link">
+        <div>
+          <div class="link-icon">⬅</div>back
+        </div>
+      </div>
+    </router-link>
+    <ThemeToggle></ThemeToggle>
+  </nav>
   <main class="page">
-    <router-link class="back" :to="{ name: 'index' }">back</router-link>
     <div v-if="location">
       <h1>{{ location.name }} Captions</h1>
       <div v-if="!captions.length && !latest.text">
