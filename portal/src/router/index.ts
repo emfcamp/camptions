@@ -15,12 +15,7 @@ const router = createRouter({
       component: () => import('@/views/CaptionsView.vue')
     },
     {
-      path: '/screen/stage/:location',
-      name: 'stage-screen',
-      component: () => import('@/views/StageScreen.vue')
-    },
-    {
-      path: '/screen/captions/:location',
+      path: '/screen/:location',
       name: 'captions-screen',
       component: () => import('@/views/CaptionsScreen.vue')
     }
