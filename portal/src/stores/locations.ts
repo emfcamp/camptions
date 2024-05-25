@@ -35,14 +35,10 @@ export const useLocationsStore = defineStore("locations", {
       }
     },
     getLocation(location: string) {
-      return this.locations.find((x) => x.location = location)
+      return this.locations[location]
     },
-    updateLocation(location: LocationType | undefined) {
-      console.log(this.locations)
-      if (this.locations) {
-        return this.locations[location.location] = location
-      }
-      return undefined
+    updateLocation(location: LocationType) {
+      return this.locations[location.location] = location
     },
   },
 })
