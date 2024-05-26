@@ -32,8 +32,10 @@ app.get("/locations", async (req: Request, res: Response) => {
 });
 
 app.get("/captions/:location", async (req: Request, res: Response) => {
-    const captions = getStream(req.params.location).instance.captionData
-    res.json(captions);
+    if (getStream(req.params.location)) {
+        const captions = getStream(req.params.location).instance.captionData
+        res.json(captions);
+    } else res.error()
 });
 
 Object.values(locations).forEach((x: LocationType) => new StreamManager(x.location));

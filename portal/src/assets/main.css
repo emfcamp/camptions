@@ -109,9 +109,9 @@ nav.links .link-icon {
 }
 
 .captionbox {
-  max-height: 55vh;
-  overflow-y: hidden;
-  font-size: 40px;
+  max-height: 70vh;
+  overflow-y: scroll;
+  font-size: 32px;
   padding: 20px;
   background: rgba(255, 255, 255, 0.5);
   border-radius: 10px;
@@ -120,8 +120,8 @@ nav.links .link-icon {
 }
 
 .captionboxscreen {
-  max-height: 70vh;
-  overflow-y: scroll;
+  max-height: 60vh;
+  overflow-y: hidden;
   padding: 20px;
   background: rgba(255, 255, 255, 0.5);
   border-radius: 10px;
@@ -136,14 +136,33 @@ nav.links .link-icon {
   padding: 20px;
   background: rgba(255, 255, 255, 0.5);
   border-radius: 10px;
+  display: flex;
+}
+
+.qrtext {
+  margin-left: 20px;
+}
+
+.disclaimer {
+  margin-top: 10px;
+  max-height: 20vh;
+  font-size: 16px;
+  padding: 10px;
+  border-radius: 10px;
 }
 
 @media screen and (max-width: 600px) {
   body {
     font-size: 20px;
   }
+  .page {
+    padding: 2rem 0;
+  }
   h1 {
     font-size: 10vw;
     margin-top: 25px;
+  }
+  .captionbox {
+    font-size: 20px;
   }
 }
