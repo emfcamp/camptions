@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useLocationsStore } from '@/stores/locations'
 import { useCaptionsStore } from '@/stores/captions'
@@ -10,6 +10,7 @@ const route = useRoute()
 const locationStore = useLocationsStore()
 const captionStore = useCaptionsStore()
 const loc = String(route.params.location)
+const captionBox = ref(null)
 const location = computed(() => {
   return locationStore.getLocation(loc)
 })
@@ -18,6 +19,9 @@ const captions = computed(() => {
 })
 const latest = computed(() => {
   return captionStore.getLatest(loc)
+})
+watch([latest, captions], () => {
+  captionBox.value.scrollTop = captionBox.value.scrollHeight
 })
 onMounted(async () => {
   captionStore.fetchCaptions(loc)
@@ -49,8 +53,8 @@ onBeforeRouteLeave((to, from) => {
           <p>Please contact the Duty Technician on 1075 if you think there is a problem.</p>
         </div>
         <div v-else class="captionbox" ref="captionBox">
-          <span v-if="latest">{{ latest.text }}</span>
           <span v-for="caption in captions" v-bind:key="caption.timestamp">{{ caption.text }}</span>
+          <span v-if="latest" class="latest">{{ latest.text }}</span>
         </div>
       </div>
       <div v-else></div>

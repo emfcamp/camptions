@@ -128,8 +128,6 @@ nav.links .link-icon {
   padding: 20px;
   background: var(--background-captions);
   border-radius: 10px;
-  display: flex;
-  flex-direction: column-reverse;
 }
 
 .captionboxscreen {
@@ -140,8 +138,10 @@ nav.links .link-icon {
   margin-top: 0.5em;
   background: rgba(255, 255, 255, 0.5);
   border-radius: 10px;
-  display: flex;
-  flex-direction: column-reverse;
+}
+
+.latest {
+  color: #999
 }
 
 .qrbox {
@@ -182,7 +182,7 @@ nav.links .link-icon {
     font-size: 24px;
   }
   .disclaimer {
-    font-size: 24px;
+    font-size: 12px;
   }
   #connection-bar {
     font-size: 24px;

@@ -73,7 +73,6 @@ const io = new Server(httpServer, {
 
 io.use((socket, next) => {
     const token = socket.handshake.auth.token;
-    console.log(token,process.env["TOKEN"])
     if (token == process.env["TOKEN"]) {
         socket.user = "authenticated";
     }

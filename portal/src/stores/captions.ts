@@ -17,7 +17,7 @@ interface Caption {
   text: string;
 }
 
-const dateSort = (a: Caption, b: Caption) => { return new Date(b.timestamp).valueOf() - new Date(a.timestamp).valueOf() }
+const dateSort = (a: Caption, b: Caption) => { return new Date(a.timestamp).valueOf() - new Date(b.timestamp).valueOf() }
 
 export const socket = io(import.meta.env.VITE_WS);
 
@@ -86,13 +86,11 @@ socket.on("connect_error", (err) => {
 socket.on("latest", (caption: Caption) => {
   const store = useCaptionsStore()
   store.setLatest(caption)
-  console.log("latest", caption)
 });
 
 socket.on("add", (caption: Caption) => {
   const store = useCaptionsStore()
   store.addCaption(caption)
-  console.log("add", caption)
 });
 
 const doConnect = () => {
@@ -101,7 +99,6 @@ const doConnect = () => {
   locStore.fetchLocations()
   if (store.getRoom) {
     store.fetchCaptions(store.getRoom)
-    console.log(socket.rooms)
     socket.emit("join", store.getRoom)
   }
   store.connection = "connected"

@@ -67,11 +67,9 @@ class StreamManager {
         let newCaption: Caption = { location: data.location, timestamp: data.timestamp, text: data.text }
         if (data.event == "latest") {
             this.latestCaption = newCaption
-            console.log("latest", this.latestCaption)
             io.to(this.config.location).emit("latest", this.latestCaption)
         } else if (data.event == "segment") {
             this.captionData.push(newCaption)
-            console.log("add", newCaption)
             io.to(this.config.location).emit("add", newCaption)
         }
         return newCaption
