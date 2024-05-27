@@ -5,6 +5,7 @@ import { useLocationsStore } from '@/stores/locations'
 import { useThemeStore } from '@/stores/theme'
 const store = useLocationsStore()
 const theme = useThemeStore()
+
 onMounted(() => {
   store.fetchLocations()
 })
@@ -19,7 +20,7 @@ const state = computed(() => {
 <template>
   <div id="root" :class="state.theme">
     <RouterView />
-    <div v-if="state.error" id="error-bar">Error Connecting to Server: {{ state.error }}</div>
+    <div v-if="state.error" id="error-bar" class="bottom-bar">Error Connecting to Server: {{ state.error }}</div>
   </div>
 </template>
 

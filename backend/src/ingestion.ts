@@ -1,4 +1,4 @@
-import storage from "node-persist";
+//import storage from "node-persist";
 import { io } from "./index";
 import {
     locations,
@@ -76,17 +76,17 @@ class StreamManager {
     }
 
     async fetchCache() {
-        await storage.init();
-        this.captionData =
-            (await storage.getItem(this.config.location)) || [];
-        this.saveCache();
+        //await storage.init();
+        //this.captionData =
+        //    (await storage.getItem(this.config.location)) || [];
+        //this.saveCache();
     }
 
     async saveCache() {
-        await storage.setItem(
-            this.config.location,
-            this.captionData
-        );
+        //await storage.setItem(
+        //    this.config.location,
+        //    this.captionData
+        //);
     }
 }
 

@@ -1,6 +1,7 @@
 import { defineStore } from 'pinia'
 import axios from "axios"
 import { io } from "socket.io-client";
+import { useLocationsStore } from '@/stores/locations'
 
 interface AllCaptions {
   [location: string]: Caption[]
@@ -26,7 +27,7 @@ export const useCaptionsStore = defineStore("captions", {
       captions: {} as AllCaptions,
       latest: {} as LatestCaptions,
       error: "" as string,
-      connected: false,
+      connection: "no-backend" as string,
       room: "",
     }
   },
@@ -34,8 +35,8 @@ export const useCaptionsStore = defineStore("captions", {
     getRoom(state) {
       return state.room
     },
-    isConnected(state) {
-      return state.connected
+    getConnection(state) {
+      return state.connection
     }
   },
   actions: {
@@ -79,33 +80,37 @@ export const useCaptionsStore = defineStore("captions", {
 
 socket.on("connect_error", (err) => {
   const store = useCaptionsStore()
-  store.connected = false
+  store.connection = "no-backend"
 });
 
 socket.on("latest", (caption: Caption) => {
   const store = useCaptionsStore()
   store.setLatest(caption)
+  console.log("latest", caption)
 });
 
 socket.on("add", (caption: Caption) => {
   const store = useCaptionsStore()
   store.addCaption(caption)
+  console.log("add", caption)
 });
 
-socket.on("reconnect", () => {
+const doConnect = () => {
   const store = useCaptionsStore()
+  const locStore = useLocationsStore()
+  locStore.fetchLocations()
   if (store.getRoom) {
+    store.fetchCaptions(store.getRoom)
     socket.emit("join", store.getRoom)
   }
-  store.connected = true
-});
+  store.connection = "connected"
+}
 
-socket.on("connect", () => {
-  const store = useCaptionsStore()
-  store.connected = true
-});
+socket.on("reconnect", doConnect);
+
+socket.on("connect", doConnect);
 
 socket.on("disconnect", () => {
   const store = useCaptionsStore()
-  store.connected = false
+  store.connection = "no-backend"
 });

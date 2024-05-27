@@ -24,8 +24,8 @@ interface Heartbeat {
 }
 
 ` status states:
-disconnected: client timed out
-client-only: client but not server
+no-streaming-client: client timed out
+no-transcription-server: client but not server
 connected: client and server connected
 `
 
@@ -33,17 +33,17 @@ let locations: Locations = {
     "stage-a": {
         location: "stage-a",
         name: "Stage A",
-        status: "disconnected",
+        status: "no-streaming-client",
     },
     "stage-b": {
         location: "stage-b",
         name: "Stage B",
-        status: "disconnected",
+        status: "no-streaming-client",
     },
     "stage-c": {
         location: "stage-c",
         name: "Stage C",
-        status: "disconnected",
+        status: "no-streaming-client",
     },
 };
 
@@ -53,19 +53,23 @@ function updateStatus(data: ServerState) {
     if (data.status == "connected") {
         locations[data.location]["status"] = "connected"
     } else if (data.status == "disconnected") {
-        locations[data.location]["status"] = "client-only"
+        locations[data.location]["status"] = "no-transcription-server"
     }
     io.to(data.location).emit("location", locations[data.location])
 }
 
 function heartBeat(data: Heartbeat) {
     heartbeats[data.location] = new Date()
+    if (locations[data.location]["status"] == "no-streaming-client") {
+        locations[data.location]["status"] = "connected"
+        io.to(data.location).emit("location", locations[data.location])
+    }
 }
 
 function checkHeartbeats() {
     for (const [location, time] of Object.entries(heartbeats)) {
         if (time.getTime() + (1000 * 15) < new Date().getTime()) {
-            locations[location]["status"] = "disconnected"
+            locations[location]["status"] = "no-streaming-client"
             io.to(location).emit("location", locations[location])
         }
     }
