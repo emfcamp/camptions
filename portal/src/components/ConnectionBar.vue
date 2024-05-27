@@ -16,8 +16,8 @@ const connection = computed(() => {
 </script>
 <template>
   <div id="connection-bar" v-if="connection != 'connected' || locStatus != 'connected'">
-    There's a bit of a problem at the moment... (state: {{ connection }}
-    <span v-if="connection == 'connected'"> {{ locStatus }}</span
+    There's a bit of a problem at the moment... ({{ connection }}
+    <span v-if="connection == 'connected'"> but {{ locStatus }}</span
     >)
   </div>
 </template>

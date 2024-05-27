@@ -101,6 +101,7 @@ const doConnect = () => {
   locStore.fetchLocations()
   if (store.getRoom) {
     store.fetchCaptions(store.getRoom)
+    console.log(socket.rooms)
     socket.emit("join", store.getRoom)
   }
   store.connection = "connected"

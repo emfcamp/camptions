@@ -10,7 +10,8 @@ const route = useRoute()
 const locationStore = useLocationsStore()
 const captionStore = useCaptionsStore()
 const loc = String(route.params.location)
-const NUMTHREE = 3
+const qrMargin = 5
+const qrSize = 200
 const location = computed(() => {
   return locationStore.getLocation(loc)
 })
@@ -51,9 +52,9 @@ onBeforeRouteLeave((to, from) => {
       </div>
       <div class="qrbox">
         <div>
-          <qrcode-vue :value="stageQR" level="M" :margin="NUMTHREE" render-as="svg" />
+          <qrcode-vue :value="stageQR" level="M" :size="qrSize" :margin="qrMargin" render-as="svg" />
         </div>
-        <div class="qrtext">Scan the QR code to see these captions on your personal device.</div>
+        <div class="qrtext">Scan the QR code to view captions on your personal device or visit <u>captions.emf.camp</u></div>
       </div>
       <div class="disclaimer">
         <p>

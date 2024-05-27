@@ -1,7 +1,7 @@
 @import './base.css';
 
 .page {
-  max-width: 1280px;
+  max-width: 1920px;
   margin: 0 auto;
   padding: 2rem;
   font-weight: normal;
@@ -110,7 +110,7 @@ nav.links .link-icon {
 #connection-bar {
   text-decoration: none;
   text-align: center;
-  font-size: 24px;
+  font-size: 32px;
   color: black;
   background: #F55089;
   padding: 5px 10px;
@@ -133,8 +133,9 @@ nav.links .link-icon {
 }
 
 .captionboxscreen {
-  max-height: 60vh;
+  height: 55vh;
   overflow-y: hidden;
+  font-size: 40px;
   padding: 20px;
   margin-top: 0.5em;
   background: rgba(255, 255, 255, 0.5);
@@ -145,22 +146,23 @@ nav.links .link-icon {
 
 .qrbox {
   margin-top: 30px;
-  max-height: 20vh;
   font-size: 32px;
   padding: 20px;
   background: rgba(255, 255, 255, 0.5);
   border-radius: 10px;
   display: flex;
+  padding-left: 120px;
 }
 
 .qrtext {
   margin-left: 20px;
+  margin: auto;
 }
 
 .disclaimer {
   margin-top: 10px;
   max-height: 20vh;
-  font-size: 20px;
+  font-size: 32px;
   padding: 10px;
   border-radius: 10px;
 }
@@ -177,6 +179,12 @@ nav.links .link-icon {
     margin-top: 25px;
   }
   .captionbox {
-    font-size: 20px;
+    font-size: 24px;
+  }
+  .disclaimer {
+    font-size: 24px;
+  }
+  #connection-bar {
+    font-size: 24px;
   }
 }
