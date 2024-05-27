@@ -42,7 +42,7 @@ onBeforeRouteLeave((to, from) => {
 <template>
   <main class="page">
     <div v-if="location">
-      <div v-if="!captions.length && !latest.text">
+      <div v-if="!captions.length && !latest.text" class="captionboxscreen">
         <p>There are currently no captions available.</p>
         <p>Please contact the Duty Technician on 1075 if you think there is a problem.</p>
       </div>

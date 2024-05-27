@@ -71,11 +71,18 @@ const io = new Server(httpServer, {
     },
 });
 
-
-
+io.use((socket, next) => {
+    const token = socket.handshake.auth.token;
+    console.log(token,process.env["TOKEN"])
+    if (token == process.env["TOKEN"]) {
+        socket.user = "authenticated";
+    }
+    next();
+});
 
 io.on('connection', (socket) => {
     socket.on('transcription', (data: string) => {
+        if (socket.user != "authenticated") return
         let transcription: Transcription = JSON.parse(data)
         if (streamReferences.includes(transcription.location)) {
             getStream(transcription.location).instance.processTranscription(transcription)
@@ -92,6 +99,7 @@ io.on('connection', (socket) => {
         }
     });
     socket.on('server', (server_state: ServerState) => {
+        if (socket.user != "authenticated") return
         if (streamReferences.includes(server_state.location)) {
             updateStatus(server_state)
         }
