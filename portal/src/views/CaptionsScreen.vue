@@ -12,7 +12,7 @@ const captionStore = useCaptionsStore()
 const loc = String(route.params.location)
 const qrMargin = 5
 const qrSize = 200
-const captionBox = ref(null)
+const captionBox = ref<null | { scrollTop: null; scrollHeight: null }>(null)
 const location = computed(() => {
   return locationStore.getLocation(loc)
 })
@@ -23,7 +23,9 @@ const latest = computed(() => {
   return captionStore.getLatest(loc)
 })
 watch([latest, captions], () => {
-  captionBox.value.scrollTop = captionBox.value.scrollHeight
+  if (captionBox.value) {
+    captionBox.value.scrollTop = captionBox.value.scrollHeight
+  }
 })
 const stageQR = computed(() => {
   if ('location' in locationStore.getLocation(loc)) {
@@ -45,7 +47,6 @@ onBeforeRouteLeave((to, from) => {
     <div v-if="location">
       <div v-if="!captions.length && !latest.text" class="captionboxscreen">
         <p>There are currently no captions available.</p>
-        <p>Please contact the Duty Technician on 1075 if you think there is a problem.</p>
       </div>
       <div v-else class="captionboxscreen" ref="captionBox">
         <span v-for="caption in captions" v-bind:key="caption.timestamp">{{ caption.text }}</span>
