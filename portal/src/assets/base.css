@@ -41,8 +41,12 @@
   left: 0px;
   z-index: -1;
 }
+
+/* fix double scrolling caused by mobile browser nav/url bars */
+html {
+  overflow: hidden;
+}
 body {
-  min-height: 100vh;
   transition:
     color 0.5s,
     background-color 0.5s;
