@@ -22,7 +22,7 @@ services:
       - backend
 
   server:
-    image: ghcr.io/collabora/whisperlive-cpu:latest
+    image: ghcr.io/collabora/whisperlive-gpu:latest
     restart: always
     ports:
       - "9090:9090"
@@ -30,4 +30,10 @@ services:
       - ./model:/root/.cache/
     stdin_open: true
     tty: true
-
+    deploy:
+      resources:
+        reservations: 
+          devices:
+            - driver: nvidia
+              count: 4
+              capabilities: [gpu]
