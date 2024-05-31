@@ -134,6 +134,7 @@ nav.links .link-icon {
   height: 55vh;
   overflow-y: hidden;
   font-size: 40px;
+  font-weight: 700;
   padding: 20px;
   margin-top: 0.5em;
   background: rgba(255, 255, 255, 0.5);
