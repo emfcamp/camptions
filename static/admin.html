@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMF Captions - Admin</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-color: #1a1a2e;
+            --surface-color: #16213e;
+            --text-color: #eaeaea;
+            --text-muted: #a0a0a0;
+            --accent-color: #e94560;
+            --success-color: #22c55e;
+            --warning-color: #f59e0b;
+            --error-color: #ef4444;
+        }
+
+        body {
+            background: var(--bg-color);
+            color: var(--text-color);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        h1 {
+            margin-bottom: 2rem;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 1.5rem;
+        }
+
+        .card {
+            background: var(--surface-color);
+            border-radius: 0.5rem;
+            padding: 1.5rem;
+        }
+
+        .card h2 {
+            margin-bottom: 1rem;
+            font-size: 1.25rem;
+            color: var(--accent-color);
+        }
+
+        .stat {
+            display: flex;
+            justify-content: space-between;
+            padding: 0.5rem 0;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+
+        .stat:last-child {
+            border-bottom: none;
+        }
+
+        .stat-value {
+            font-weight: 600;
+        }
+
+        .venue-list {
+            list-style: none;
+        }
+
+        .venue-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            background: var(--bg-color);
+            border-radius: 0.25rem;
+        }
+
+        .venue-name {
+            font-weight: 500;
+        }
+
+        .venue-status {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .status-badge {
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+            font-size: 0.75rem;
+            text-transform: uppercase;
+        }
+
+        .status-badge.live {
+            background: var(--success-color);
+            color: #000;
+        }
+
+        .status-badge.offline {
+            background: var(--text-muted);
+            color: #000;
+        }
+
+        .btn {
+            padding: 0.5rem 1rem;
+            border: none;
+            border-radius: 0.25rem;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: opacity 0.2s;
+        }
+
+        .btn:hover {
+            opacity: 0.8;
+        }
+
+        .btn-primary {
+            background: var(--accent-color);
+            color: white;
+        }
+
+        .btn-secondary {
+            background: var(--text-muted);
+            color: #000;
+        }
+
+        .btn-success {
+            background: var(--success-color);
+            color: #000;
+        }
+
+        .btn-danger {
+            background: var(--error-color);
+            color: white;
+        }
+
+        .actions {
+            display: flex;
+            gap: 0.5rem;
+            margin-top: 1rem;
+        }
+
+        .session-list {
+            list-style: none;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .session-item {
+            padding: 0.75rem;
+            margin-bottom: 0.5rem;
+            background: var(--bg-color);
+            border-radius: 0.25rem;
+        }
+
+        .session-title {
+            font-weight: 500;
+        }
+
+        .session-meta {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.25rem;
+        }
+
+        .refresh-indicator {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            margin-top: 0.5rem;
+        }
+
+        .alert {
+            padding: 1rem;
+            border-radius: 0.25rem;
+            margin-bottom: 1rem;
+        }
+
+        .alert-success {
+            background: rgba(34, 197, 94, 0.2);
+            border: 1px solid var(--success-color);
+        }
+
+        .alert-error {
+            background: rgba(239, 68, 68, 0.2);
+            border: 1px solid var(--error-color);
+        }
+
+        #alertContainer {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            z-index: 1000;
+            max-width: 400px;
+        }
+    </style>
+</head>
+<body>
+    <div id="alertContainer"></div>
+
+    <div class="container">
+        <h1>EMF Captions Admin</h1>
+
+        <div class="grid">
+            <div class="card">
+                <h2>System Stats</h2>
+                <div id="stats">
+                    <div class="stat">
+                        <span>Total Venues</span>
+                        <span class="stat-value" id="statVenues">-</span>
+                    </div>
+                    <div class="stat">
+                        <span>Active Sessions</span>
+                        <span class="stat-value" id="statActiveSessions">-</span>
+                    </div>
+                    <div class="stat">
+                        <span>Total Sessions</span>
+                        <span class="stat-value" id="statTotalSessions">-</span>
+                    </div>
+                    <div class="stat">
+                        <span>Total Segments</span>
+                        <span class="stat-value" id="statSegments">-</span>
+                    </div>
+                    <div class="stat">
+                        <span>Connected Viewers</span>
+                        <span class="stat-value" id="statViewers">-</span>
+                    </div>
+                </div>
+                <div class="refresh-indicator">Auto-refreshes every 5s</div>
+            </div>
+
+            <div class="card">
+                <h2>Venues</h2>
+                <ul class="venue-list" id="venueList">
+                    <!-- Populated dynamically -->
+                </ul>
+                <div class="actions">
+                    <button class="btn btn-primary" onclick="initVenues()">Initialize Default Venues</button>
+                </div>
+            </div>
+
+            <div class="card">
+                <h2>Recent Sessions</h2>
+                <ul class="session-list" id="sessionList">
+                    <!-- Populated dynamically -->
+                </ul>
+            </div>
+
+            <div class="card">
+                <h2>Maintenance</h2>
+                <p style="color: var(--text-muted); margin-bottom: 1rem;">
+                    Clean up old caption data based on retention policy.
+                </p>
+                <div class="actions">
+                    <button class="btn btn-danger" onclick="cleanup()">Clean Up Old Data</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Show alert message
+        function showAlert(message, type = 'success') {
+            const container = document.getElementById('alertContainer');
+            const alert = document.createElement('div');
+            alert.className = `alert alert-${type}`;
+            alert.textContent = message;
+            container.appendChild(alert);
+
+            setTimeout(() => {
+                alert.remove();
+            }, 5000);
+        }
+
+        // Fetch and display stats
+        async function loadStats() {
+            try {
+                const response = await fetch('/api/admin/stats');
+                const data = await response.json();
+
+                document.getElementById('statVenues').textContent = data.venues.total;
+                document.getElementById('statActiveSessions').textContent = data.venues.active;
+                document.getElementById('statTotalSessions').textContent = data.sessions.total;
+                document.getElementById('statSegments').textContent = data.segments.total;
+                document.getElementById('statViewers').textContent = data.subscribers.total;
+            } catch (e) {
+                console.error('Failed to load stats:', e);
+            }
+        }
+
+        // Fetch and display venues
+        async function loadVenues() {
+            try {
+                const [venuesRes, statsRes] = await Promise.all([
+                    fetch('/api/venues?active_only=false'),
+                    fetch('/api/admin/stats')
+                ]);
+
+                const venues = await venuesRes.json();
+                const stats = await statsRes.json();
+                const activeVenues = new Set(stats.venues.active_list);
+
+                const venueList = document.getElementById('venueList');
+                venueList.innerHTML = venues.map(v => `
+                    <li class="venue-item">
+                        <span class="venue-name">${escapeHtml(v.name)}</span>
+                        <div class="venue-status">
+                            <span class="status-badge ${activeVenues.has(v.id) ? 'live' : 'offline'}">
+                                ${activeVenues.has(v.id) ? 'Live' : 'Offline'}
+                            </span>
+                            ${activeVenues.has(v.id)
+                                ? `<button class="btn btn-danger btn-sm" onclick="stopSession('${v.id}')">Stop</button>`
+                                : `<button class="btn btn-success btn-sm" onclick="startSession('${v.id}')">Start</button>`
+                            }
+                        </div>
+                    </li>
+                `).join('');
+            } catch (e) {
+                console.error('Failed to load venues:', e);
+            }
+        }
+
+        // Fetch and display sessions
+        async function loadSessions() {
+            try {
+                const response = await fetch('/api/admin/sessions?limit=10');
+                const data = await response.json();
+
+                const sessionList = document.getElementById('sessionList');
+                sessionList.innerHTML = data.sessions.map(s => `
+                    <li class="session-item">
+                        <div class="session-title">
+                            ${escapeHtml(s.title || s.venue_id)}
+                            ${s.is_live ? '<span class="status-badge live" style="margin-left: 0.5rem;">Live</span>' : ''}
+                        </div>
+                        <div class="session-meta">
+                            Venue: ${s.venue_id} | Started: ${formatDate(s.started_at)}
+                            ${s.ended_at ? ` | Ended: ${formatDate(s.ended_at)}` : ''}
+                        </div>
+                    </li>
+                `).join('') || '<li class="session-item">No sessions yet</li>';
+            } catch (e) {
+                console.error('Failed to load sessions:', e);
+            }
+        }
+
+        // Start a session
+        async function startSession(venueId) {
+            try {
+                const response = await fetch(`/api/admin/sessions/${venueId}/start`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    showAlert(`Session started for ${venueId}`);
+                    loadAll();
+                } else {
+                    const data = await response.json();
+                    showAlert(data.detail || 'Failed to start session', 'error');
+                }
+            } catch (e) {
+                showAlert('Failed to start session', 'error');
+            }
+        }
+
+        // Stop a session
+        async function stopSession(venueId) {
+            try {
+                const response = await fetch(`/api/admin/sessions/${venueId}/stop`, {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    showAlert(`Session stopped for ${venueId}`);
+                    loadAll();
+                } else {
+                    const data = await response.json();
+                    showAlert(data.detail || 'Failed to stop session', 'error');
+                }
+            } catch (e) {
+                showAlert('Failed to stop session', 'error');
+            }
+        }
+
+        // Initialize default venues
+        async function initVenues() {
+            try {
+                const response = await fetch('/api/admin/init-venues', {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    showAlert(`Created: ${data.created.join(', ') || 'none'}`);
+                    loadAll();
+                } else {
+                    showAlert('Failed to initialize venues', 'error');
+                }
+            } catch (e) {
+                showAlert('Failed to initialize venues', 'error');
+            }
+        }
+
+        // Cleanup old data
+        async function cleanup() {
+            if (!confirm('This will delete old caption data. Continue?')) return;
+
+            try {
+                const response = await fetch('/api/admin/cleanup', {
+                    method: 'POST'
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    showAlert(`Deleted ${data.deleted.segments} segments and ${data.deleted.sessions} sessions`);
+                    loadAll();
+                } else {
+                    showAlert('Failed to cleanup', 'error');
+                }
+            } catch (e) {
+                showAlert('Failed to cleanup', 'error');
+            }
+        }
+
+        // Helper functions
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text || '';
+            return div.innerHTML;
+        }
+
+        function formatDate(dateStr) {
+            if (!dateStr) return '-';
+            const date = new Date(dateStr);
+            return date.toLocaleString();
+        }
+
+        // Load all data
+        function loadAll() {
+            loadStats();
+            loadVenues();
+            loadSessions();
+        }
+
+        // Initial load and auto-refresh
+        loadAll();
+        setInterval(loadAll, 5000);
+    </script>
+</body>
+</html>

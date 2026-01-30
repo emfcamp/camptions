@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EMF Captions</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --bg-color: #000000;
+            --text-color: #ffffff;
+            --speaker-color: #ffcc00;
+            --tentative-opacity: 0.6;
+            --font-size: 4vw;
+            --line-height: 1.4;
+            --padding: 2rem;
+        }
+
+        body {
+            background: var(--bg-color);
+            color: var(--text-color);
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            font-size: var(--font-size);
+            line-height: var(--line-height);
+            min-height: 100vh;
+            padding: var(--padding);
+            overflow: hidden;
+        }
+
+        /* High contrast mode */
+        body.high-contrast {
+            --bg-color: #000000;
+            --text-color: #ffff00;
+            --speaker-color: #00ffff;
+        }
+
+        /* Light mode */
+        body.light {
+            --bg-color: #ffffff;
+            --text-color: #000000;
+            --speaker-color: #0066cc;
+        }
+
+        #status {
+            position: fixed;
+            top: 1rem;
+            right: 1rem;
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-size: 1rem;
+            z-index: 100;
+        }
+
+        #status.connected {
+            background: #22c55e;
+            color: #000;
+        }
+
+        #status.disconnected {
+            background: #ef4444;
+            color: #fff;
+        }
+
+        #status.reconnecting {
+            background: #f59e0b;
+            color: #000;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        #captions {
+            display: flex;
+            flex-direction: column;
+            justify-content: flex-end;
+            min-height: calc(100vh - 4rem);
+        }
+
+        .caption-line {
+            margin-bottom: 0.5em;
+            animation: fadeIn 0.3s ease-out;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .speaker {
+            color: var(--speaker-color);
+            font-weight: 600;
+        }
+
+        .tentative {
+            opacity: var(--tentative-opacity);
+            font-style: italic;
+        }
+
+        .committed {
+            opacity: 1;
+        }
+
+        /* Cursor for ongoing speech */
+        .tentative::after {
+            content: '\u258B';
+            animation: blink 1s infinite;
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+
+        /* Scrollbar styling */
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div id="status" class="disconnected">Connecting...</div>
+    <div id="captions"></div>
+
+    <script>
+        // Configuration from URL params
+        const params = new URLSearchParams(window.location.search);
+        const venue = params.get('venue') || 'stage-a';
+        const mode = params.get('mode') || 'dark';
+        const fontSize = params.get('fontSize');
+        const maxLines = parseInt(params.get('maxLines')) || 8;
+
+        // Apply mode
+        if (mode === 'light') document.body.classList.add('light');
+        if (mode === 'high-contrast') document.body.classList.add('high-contrast');
+        if (fontSize) document.documentElement.style.setProperty('--font-size', fontSize);
+
+        // State
+        let ws = null;
+        let reconnectAttempts = 0;
+        const maxReconnectAttempts = 10;
+        const baseReconnectDelay = 1000;
+
+        // Track current tentative segment for updates
+        let currentTentativeId = null;
+
+        const captionsEl = document.getElementById('captions');
+        const statusEl = document.getElementById('status');
+
+        function setStatus(status, text) {
+            statusEl.className = status;
+            statusEl.textContent = text;
+        }
+
+        function connect() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            const wsUrl = `${protocol}//${window.location.host}/api/captions/stream/${venue}`;
+
+            setStatus('reconnecting', 'Connecting...');
+
+            ws = new WebSocket(wsUrl);
+
+            ws.onopen = () => {
+                setStatus('connected', 'Live');
+                reconnectAttempts = 0;
+            };
+
+            ws.onmessage = (event) => {
+                try {
+                    const data = JSON.parse(event.data);
+                    handleMessage(data);
+                } catch (e) {
+                    console.error('Failed to parse message:', e);
+                }
+            };
+
+            ws.onclose = () => {
+                setStatus('disconnected', 'Disconnected');
+                scheduleReconnect();
+            };
+
+            ws.onerror = (error) => {
+                console.error('WebSocket error:', error);
+            };
+        }
+
+        function scheduleReconnect() {
+            if (reconnectAttempts >= maxReconnectAttempts) {
+                setStatus('disconnected', 'Connection failed');
+                return;
+            }
+
+            reconnectAttempts++;
+            const delay = Math.min(
+                baseReconnectDelay * Math.pow(2, reconnectAttempts - 1),
+                30000
+            );
+
+            setStatus('reconnecting', `Reconnecting in ${Math.round(delay/1000)}s...`);
+            setTimeout(connect, delay);
+        }
+
+        function handleMessage(data) {
+            switch (data.type) {
+                case 'connected':
+                case 'keepalive':
+                    // Ignore meta messages
+                    break;
+
+                case 'tentative':
+                    updateTentative(data);
+                    break;
+
+                case 'committed':
+                    commitSegment(data);
+                    break;
+
+                case 'final':
+                    finishUtterance(data);
+                    break;
+
+                case 'session_end':
+                    addSystemMessage('Session ended');
+                    break;
+
+                default:
+                    console.log('Unknown message type:', data.type);
+            }
+        }
+
+        function updateTentative(data) {
+            let el = document.getElementById('tentative-segment');
+
+            if (!el) {
+                el = document.createElement('div');
+                el.id = 'tentative-segment';
+                el.className = 'caption-line tentative';
+                captionsEl.appendChild(el);
+            }
+
+            el.innerHTML = formatSegment(data);
+            currentTentativeId = data.id;
+            scrollToBottom();
+        }
+
+        function commitSegment(data) {
+            // Remove tentative if it matches
+            const tentativeEl = document.getElementById('tentative-segment');
+            if (tentativeEl) {
+                tentativeEl.remove();
+            }
+
+            // Add committed segment
+            const el = document.createElement('div');
+            el.className = 'caption-line committed';
+            el.dataset.id = data.id;
+            el.innerHTML = formatSegment(data);
+            captionsEl.appendChild(el);
+
+            // Trim old lines
+            trimLines();
+            scrollToBottom();
+        }
+
+        function finishUtterance(data) {
+            // Mark end of speaker turn - could add visual separator
+            const tentativeEl = document.getElementById('tentative-segment');
+            if (tentativeEl) {
+                tentativeEl.remove();
+            }
+        }
+
+        function formatSegment(data) {
+            let html = '';
+
+            if (data.speaker) {
+                html += `<span class="speaker">[${escapeHtml(data.speaker)}]</span> `;
+            }
+
+            html += escapeHtml(data.text);
+
+            return html;
+        }
+
+        function addSystemMessage(text) {
+            const el = document.createElement('div');
+            el.className = 'caption-line system';
+            el.style.opacity = '0.5';
+            el.style.fontSize = '0.7em';
+            el.textContent = `\u2014 ${text} \u2014`;
+            captionsEl.appendChild(el);
+            scrollToBottom();
+        }
+
+        function trimLines() {
+            while (captionsEl.children.length > maxLines) {
+                captionsEl.removeChild(captionsEl.firstChild);
+            }
+        }
+
+        function scrollToBottom() {
+            captionsEl.scrollTop = captionsEl.scrollHeight;
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Start connection
+        connect();
+
+        // Handle visibility changes (reconnect when tab becomes visible)
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && (!ws || ws.readyState !== WebSocket.OPEN)) {
+                reconnectAttempts = 0;
+                connect();
+            }
+        });
+
+        // Fullscreen on click (useful for kiosk setup)
+        document.body.addEventListener('dblclick', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen();
+            } else {
+                document.exitFullscreen();
+            }
+        });
+    </script>
+</body>
+</html>

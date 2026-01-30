@@ -1,0 +1,19 @@
+services:
+  camptions:
+    build: .
+    ports:
+      - "8000:8000"
+    environment:
+      - CAMPTIONS_HOST=0.0.0.0
+      - CAMPTIONS_PORT=8000
+      - CAMPTIONS_DATABASE_URL=sqlite+aiosqlite:///./data/camptions.db
+      - CAMPTIONS_WHISPER_MODEL=small
+      - CAMPTIONS_WHISPER_LANGUAGE=en
+      - CAMPTIONS_WHISPER_BACKEND=auto
+    volumes:
+      - ./data:/app/data
+      - whisper-cache:/root/.cache/huggingface
+    restart: unless-stopped
+
+volumes:
+  whisper-cache:
