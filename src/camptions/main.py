@@ -11,6 +11,8 @@ from fastapi.staticfiles import StaticFiles
 from .config import settings
 from .database import close_db, init_db
 from .routers import admin, audio, captions, venues
+from .routers import schedule as schedule_router
+from .services.schedule import schedule_service
 from .services.transcription import TranscriptionManager
 
 # Path to static files — resolve relative to source tree or working directory (Docker)
@@ -27,6 +29,8 @@ async def lifespan(app: FastAPI):
     transcription_manager = TranscriptionManager(settings)
     await transcription_manager.start()
 
+    await schedule_service.start()
+
     # Inject transcription manager into routers (avoiding circular imports)
     audio.set_transcription_manager(transcription_manager)
     admin.set_transcription_manager(transcription_manager)
@@ -39,6 +43,7 @@ async def lifespan(app: FastAPI):
 
     # Shutdown
     await transcription_manager.stop()
+    await schedule_service.stop()
     await close_db()
 
 
@@ -63,6 +68,7 @@ app.include_router(audio.router, prefix="/api/audio", tags=["audio"])
 app.include_router(captions.router, prefix="/api/captions", tags=["captions"])
 app.include_router(venues.router, prefix="/api/venues", tags=["venues"])
 app.include_router(admin.router, prefix="/api/admin", tags=["admin"])
+app.include_router(schedule_router.router, prefix="/api/schedule", tags=["schedule"])
 
 # Static files (only if directory exists)
 if STATIC_DIR.exists():

@@ -12,6 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..database import get_db
 from ..models import Segment, Session
 from ..services.distribution import distribution_manager
+from ..services.schedule import schedule_service
 
 router = APIRouter()
 
@@ -46,6 +47,19 @@ async def caption_stream(websocket: WebSocket, venue_id: str) -> None:
                 "timestamp": datetime.utcnow().isoformat(),
             }
         )
+
+        # Send current schedule for this venue if available
+        schedule = schedule_service.get_now_and_next(venue_id)
+        if schedule is not None:
+            await websocket.send_json(
+                {
+                    "type": "schedule_update",
+                    "venue_id": venue_id,
+                    "now": schedule["now"],
+                    "next": schedule["next"],
+                    "timestamp": datetime.utcnow().isoformat(),
+                }
+            )
 
         # Keep connection alive
         while True:

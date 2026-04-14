@@ -87,6 +87,7 @@
             flex-direction: column;
             justify-content: flex-end;
             min-height: calc(100vh - 4rem);
+            padding-top: 3rem; /* space for talk header when visible */
         }
 
         .caption-line {
@@ -130,6 +131,64 @@
             50% { opacity: 0; }
         }
 
+        /* Talk header bar */
+        #talkHeader {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(4px);
+            padding: 0.6rem var(--padding);
+            display: flex;
+            align-items: baseline;
+            gap: 1rem;
+            z-index: 90;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            font-size: 0.55em;
+        }
+
+        body.light #talkHeader {
+            background: rgba(255, 255, 255, 0.85);
+            border-bottom-color: rgba(0, 0, 0, 0.1);
+        }
+
+        .talk-now-label {
+            color: var(--speaker-color);
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .talk-title {
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .talk-speaker {
+            opacity: 0.65;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .talk-time {
+            opacity: 0.5;
+            white-space: nowrap;
+            flex-shrink: 0;
+            margin-left: auto;
+        }
+
+        .talk-next {
+            opacity: 0.5;
+            white-space: nowrap;
+            flex-shrink: 0;
+            font-size: 0.9em;
+        }
+
         /* Scrollbar styling */
         ::-webkit-scrollbar {
             width: 8px;
@@ -146,6 +205,13 @@
     </style>
 </head>
 <body>
+    <div id="talkHeader" style="display:none">
+        <span class="talk-now-label">Now</span>
+        <span class="talk-title" id="talkTitle"></span>
+        <span class="talk-speaker" id="talkSpeaker"></span>
+        <span class="talk-time" id="talkTime"></span>
+        <span class="talk-next" id="talkNext"></span>
+    </div>
     <div id="status" class="disconnected">Connecting...</div>
     <div id="captions"></div>
 
@@ -251,6 +317,9 @@
                 case 'final':
                     finishUtterance(data);
                     break;
+                case 'schedule_update':
+                    updateSchedule(data);
+                    break;
                 case 'session_end':
                     break; // handled by venue_offline
                 default:
@@ -330,6 +399,23 @@
 
         function scrollToBottom() {
             captionsEl.scrollTop = captionsEl.scrollHeight;
+        }
+
+        function updateSchedule(data) {
+            const header = document.getElementById('talkHeader');
+            if (!data.now || !data.now.title) {
+                header.style.display = 'none';
+                return;
+            }
+            document.getElementById('talkTitle').textContent = data.now.title;
+            document.getElementById('talkSpeaker').textContent = data.now.speaker || '';
+            document.getElementById('talkTime').textContent =
+                data.now.start_time && data.now.end_time
+                    ? `${data.now.start_time}–${data.now.end_time}`
+                    : '';
+            document.getElementById('talkNext').textContent =
+                data.next && data.next.title ? `Next: ${data.next.title}` : '';
+            header.style.display = 'flex';
         }
 
         function escapeHtml(text) {

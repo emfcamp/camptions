@@ -6,6 +6,7 @@
     <meta name="theme-color" content="#1a1a2e">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <title>EMF Captions</title>
+    <!-- Yes, this was vibe coded, Claude is great. -->
     <link rel="manifest" href="/static/manifest.json">
     <style>
         * {
@@ -234,6 +235,58 @@
             cursor: pointer;
         }
 
+        /* Now playing banner */
+        .now-playing {
+            background: var(--surface-color);
+            border-left: 3px solid var(--accent-color);
+            padding: 0.75rem 1rem;
+            margin-bottom: 1rem;
+            border-radius: 0.5rem;
+        }
+
+        .now-playing-label {
+            font-size: 0.65rem;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            color: var(--accent-color);
+            font-weight: 700;
+            margin-bottom: 0.2rem;
+        }
+
+        .now-playing-title {
+            font-size: 0.95rem;
+            font-weight: 600;
+            line-height: 1.3;
+        }
+
+        .now-playing-speaker {
+            font-size: 0.8rem;
+            color: var(--text-muted);
+            margin-top: 0.15rem;
+        }
+
+        .now-playing-time {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+            margin-top: 0.1rem;
+        }
+
+        .next-talk {
+            margin-top: 0.5rem;
+            padding-top: 0.5rem;
+            border-top: 1px solid rgba(255,255,255,0.08);
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .next-talk-label {
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            font-size: 0.65rem;
+            font-weight: 600;
+            margin-bottom: 0.1rem;
+        }
+
         /* Empty state */
         .empty-state {
             text-align: center;
@@ -263,6 +316,18 @@
     </nav>
 
     <main>
+        <div id="nowPlaying" class="now-playing" style="display:none">
+            <div class="now-playing-label">Now playing</div>
+            <div class="now-playing-title" id="nowTitle"></div>
+            <div class="now-playing-speaker" id="nowSpeaker"></div>
+            <div class="now-playing-time" id="nowTime"></div>
+            <div class="next-talk" id="nextTalk" style="display:none">
+                <div class="next-talk-label">Up next</div>
+                <div id="nextTitle"></div>
+                <div id="nextSpeaker" style="color:var(--text-muted);font-size:0.7rem"></div>
+                <div id="nextTime" style="color:var(--text-muted);font-size:0.7rem"></div>
+            </div>
+        </div>
         <div id="captions">
             <div class="empty-state" id="emptyState">
                 <div class="empty-state-icon">&#127908;</div>
@@ -359,6 +424,7 @@
             captionsEl.innerHTML = '';
             captionsEl.appendChild(emptyStateEl);
             emptyStateEl.style.display = 'block';
+            document.getElementById('nowPlaying').style.display = 'none';
         }
 
         function setStatus(dot, text) {
@@ -422,6 +488,11 @@
 
             if (data.type === 'venue_offline') {
                 setStatus('offline', 'Connected · Offline');
+                return;
+            }
+
+            if (data.type === 'schedule_update') {
+                updateSchedule(data);
                 return;
             }
 
@@ -497,6 +568,32 @@
 
         function scrollToBottom() {
             window.scrollTo(0, document.body.scrollHeight);
+        }
+
+        function updateSchedule(data) {
+            const nowEl = document.getElementById('nowPlaying');
+            if (!data.now || !data.now.title) {
+                nowEl.style.display = 'none';
+                return;
+            }
+            document.getElementById('nowTitle').textContent = data.now.title;
+            document.getElementById('nowSpeaker').textContent = data.now.speaker || '';
+            document.getElementById('nowTime').textContent =
+                data.now.start_time && data.now.end_time
+                    ? `${data.now.start_time} – ${data.now.end_time}`
+                    : '';
+            nowEl.style.display = 'block';
+
+            const nextTalkEl = document.getElementById('nextTalk');
+            if (data.next && data.next.title) {
+                document.getElementById('nextTitle').textContent = data.next.title;
+                document.getElementById('nextSpeaker').textContent = data.next.speaker || '';
+                document.getElementById('nextTime').textContent =
+                    data.next.start_time ? data.next.start_time : '';
+                nextTalkEl.style.display = 'block';
+            } else {
+                nextTalkEl.style.display = 'none';
+            }
         }
 
         function escapeHtml(text) {
