@@ -13,8 +13,9 @@ from .database import close_db, init_db
 from .routers import admin, audio, captions, venues
 from .services.transcription import TranscriptionManager
 
-# Path to static files
-STATIC_DIR = Path(__file__).parent.parent.parent / "static"
+# Path to static files — resolve relative to source tree or working directory (Docker)
+_src_relative = Path(__file__).parent.parent.parent / "static"
+STATIC_DIR = _src_relative if _src_relative.exists() else Path("/app/static")
 
 
 @asynccontextmanager

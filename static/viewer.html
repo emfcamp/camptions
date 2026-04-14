@@ -286,7 +286,6 @@
             { id: 'stage-a', name: 'Stage A' },
             { id: 'stage-b', name: 'Stage B' },
             { id: 'stage-c', name: 'Stage C' },
-            { id: 'workshop', name: 'Workshop' },
         ];
 
         // State
@@ -370,6 +369,7 @@
 
         function connect() {
             if (ws) {
+                ws.onclose = null;
                 ws.close();
             }
 
@@ -402,9 +402,8 @@
         }
 
         function scheduleReconnect() {
-            if (reconnectAttempts >= 10) return;
             reconnectAttempts++;
-            const delay = Math.min(1000 * Math.pow(2, reconnectAttempts - 1), 30000);
+            const delay = Math.min(1000 * Math.pow(2, Math.min(reconnectAttempts - 1, 5)), 30000);
             setTimeout(connect, delay);
         }
 

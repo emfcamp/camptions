@@ -11,15 +11,21 @@ RUN apt-get update && apt-get install -y \
 # Set working directory
 WORKDIR /app
 
-# Copy application code first (needed for install)
+# Install dependencies first — cached unless pyproject.toml changes.
+# Stub src/ lets pip resolve and install all external deps without the real source.
 COPY pyproject.toml .
+RUN mkdir -p src/camptions && touch src/camptions/__init__.py \
+    && pip install --no-cache-dir ".[gpu]" \
+    && rm -rf src/
+
+# Copy real source — only these layers re-run on src/ changes, not the pip above.
 COPY src/ src/
 COPY static/ static/
 COPY alembic/ alembic/
 COPY alembic.ini .
 
-# Install Python dependencies
-RUN pip install --no-cache-dir ".[gpu]"
+# Install the local package only (no deps to download — all already installed above).
+RUN pip install --no-cache-dir --no-deps .
 
 # Create data directory
 RUN mkdir -p /app/data
