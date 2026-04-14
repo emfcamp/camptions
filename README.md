@@ -94,7 +94,7 @@ Environment variables (prefix with `CAMPTIONS_`):
 | `WHISPER_LANGUAGE` | `en` | Transcription language |
 | `WHISPER_BACKEND` | `auto` | Backend: auto, faster-whisper, whisper |
 | `ENABLE_VAD` | `true` | Enable voice activity detection |
-| `DEFAULT_VENUES` | `["stage-a", "stage-b", "stage-c", "workshop"]` | Default venue IDs |
+| `DEFAULT_VENUES` | `["stage-a", "stage-b", "stage-c"]` | Default venue IDs |
 | `CAPTION_RETENTION_HOURS` | `72` | Hours to retain caption data |
 
 ## Raspberry Pi Setup

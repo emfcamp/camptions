@@ -32,7 +32,7 @@ class Settings(BaseSettings):
     enable_vad: bool = True
 
     # Venues
-    default_venues: list[str] = ["stage-a", "stage-b", "stage-c", "workshop"]
+    default_venues: list[str] = ["stage-a", "stage-b", "stage-c"]
 
     # Retention
     caption_retention_hours: int = 72
