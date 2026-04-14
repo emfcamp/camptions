@@ -11,7 +11,7 @@ from .distribution import distribution_manager
 
 logger = logging.getLogger(__name__)
 
-EMF_NOW_AND_NEXT_URL = "https://emfcamp.org/schedule/now-and-next.json"
+EMF_NOW_AND_NEXT_URL = "https://www.emfcamp.org/schedule/now-and-next.json"
 POLL_INTERVAL = 60  # seconds
 
 
