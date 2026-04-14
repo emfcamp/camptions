@@ -15,6 +15,14 @@ from ..services.distribution import distribution_manager
 
 router = APIRouter()
 
+# TranscriptionManager will be set by main.py after initialization
+_transcription_manager = None
+
+
+def set_transcription_manager(manager) -> None:
+    global _transcription_manager
+    _transcription_manager = manager
+
 
 @router.websocket("/stream/{venue_id}")
 async def caption_stream(websocket: WebSocket, venue_id: str) -> None:
@@ -28,11 +36,13 @@ async def caption_stream(websocket: WebSocket, venue_id: str) -> None:
     await distribution_manager.subscribe(venue_id, websocket)
 
     try:
-        # Send connection confirmation
+        # Send connection confirmation including current live status
+        is_live = _transcription_manager is not None and _transcription_manager.has_active_session(venue_id)
         await websocket.send_json(
             {
                 "type": "connected",
                 "venue_id": venue_id,
+                "is_live": is_live,
                 "timestamp": datetime.utcnow().isoformat(),
             }
         )

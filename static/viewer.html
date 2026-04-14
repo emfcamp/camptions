@@ -73,8 +73,12 @@
             background: var(--error-color);
         }
 
-        .status-dot.connected {
+        .status-dot.live {
             background: var(--success-color);
+        }
+
+        .status-dot.offline {
+            background: var(--text-muted);
         }
 
         .status-dot.reconnecting {
@@ -357,14 +361,9 @@
             emptyStateEl.style.display = 'block';
         }
 
-        function setStatus(status) {
-            statusDotEl.className = 'status-dot ' + status;
-            const statusMessages = {
-                'connected': 'Live',
-                'disconnected': 'Disconnected',
-                'reconnecting': 'Reconnecting...',
-            };
-            statusTextEl.textContent = statusMessages[status] || status;
+        function setStatus(dot, text) {
+            statusDotEl.className = 'status-dot ' + dot;
+            statusTextEl.textContent = text;
         }
 
         function connect() {
@@ -373,7 +372,7 @@
                 ws.close();
             }
 
-            setStatus('reconnecting');
+            setStatus('reconnecting', 'Connecting...');
 
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/api/captions/stream/${currentVenue}`;
@@ -381,7 +380,7 @@
             ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
-                setStatus('connected');
+                // Status will be set properly when 'connected' message arrives with is_live
                 reconnectAttempts = 0;
             };
 
@@ -394,7 +393,7 @@
             };
 
             ws.onclose = () => {
-                setStatus('disconnected');
+                setStatus('', 'Disconnected');
                 scheduleReconnect();
             };
 
@@ -408,7 +407,23 @@
         }
 
         function handleMessage(data) {
-            if (data.type === 'keepalive' || data.type === 'connected') return;
+            if (data.type === 'keepalive') return;
+
+            if (data.type === 'connected') {
+                setStatus(data.is_live ? 'live' : 'offline',
+                          data.is_live ? 'Connected · Live' : 'Connected · Offline');
+                return;
+            }
+
+            if (data.type === 'venue_live') {
+                setStatus('live', 'Connected · Live');
+                return;
+            }
+
+            if (data.type === 'venue_offline') {
+                setStatus('offline', 'Connected · Offline');
+                return;
+            }
 
             emptyStateEl.style.display = 'none';
 
@@ -417,7 +432,7 @@
             } else if (data.type === 'committed') {
                 commitSegment(data);
             } else if (data.type === 'session_end') {
-                addSystemMessage('Session ended');
+                return; // status already updated via venue_offline
             }
         }
 

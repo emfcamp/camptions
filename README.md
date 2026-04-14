@@ -75,9 +75,8 @@ pytest
 - `POST /api/venues` - Create a venue
 
 ### Admin
-- `POST /api/admin/sessions/{venue_id}/start` - Start a session
-- `POST /api/admin/sessions/{venue_id}/stop` - Stop a session
 - `GET /api/admin/stats` - System statistics
+- `GET /api/admin/sessions` - List recent sessions
 - `POST /api/admin/init-venues` - Initialize default venues
 - `POST /api/admin/cleanup` - Clean up old data
 

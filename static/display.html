@@ -56,9 +56,14 @@
             z-index: 100;
         }
 
-        #status.connected {
+        #status.live {
             background: #22c55e;
             color: #000;
+        }
+
+        #status.offline {
+            background: #6b7280;
+            color: #fff;
         }
 
         #status.disconnected {
@@ -160,7 +165,6 @@
         // State
         let ws = null;
         let reconnectAttempts = 0;
-        const maxReconnectAttempts = 10;
         const baseReconnectDelay = 1000;
 
         // Track current tentative segment for updates
@@ -169,12 +173,17 @@
         const captionsEl = document.getElementById('captions');
         const statusEl = document.getElementById('status');
 
-        function setStatus(status, text) {
-            statusEl.className = status;
+        function setStatus(cls, text) {
+            statusEl.className = cls;
             statusEl.textContent = text;
         }
 
         function connect() {
+            if (ws) {
+                ws.onclose = null;
+                ws.close();
+            }
+
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
             const wsUrl = `${protocol}//${window.location.host}/api/captions/stream/${venue}`;
 
@@ -183,14 +192,12 @@
             ws = new WebSocket(wsUrl);
 
             ws.onopen = () => {
-                setStatus('connected', 'Live');
                 reconnectAttempts = 0;
             };
 
             ws.onmessage = (event) => {
                 try {
-                    const data = JSON.parse(event.data);
-                    handleMessage(data);
+                    handleMessage(JSON.parse(event.data));
                 } catch (e) {
                     console.error('Failed to parse message:', e);
                 }
@@ -207,44 +214,45 @@
         }
 
         function scheduleReconnect() {
-            if (reconnectAttempts >= maxReconnectAttempts) {
-                setStatus('disconnected', 'Connection failed');
-                return;
-            }
-
             reconnectAttempts++;
             const delay = Math.min(
-                baseReconnectDelay * Math.pow(2, reconnectAttempts - 1),
+                baseReconnectDelay * Math.pow(2, Math.min(reconnectAttempts - 1, 5)),
                 30000
             );
-
-            setStatus('reconnecting', `Reconnecting in ${Math.round(delay/1000)}s...`);
             setTimeout(connect, delay);
         }
 
         function handleMessage(data) {
-            switch (data.type) {
-                case 'connected':
-                case 'keepalive':
-                    // Ignore meta messages
-                    break;
+            if (data.type === 'keepalive') return;
 
+            if (data.type === 'connected') {
+                setStatus(data.is_live ? 'live' : 'offline',
+                          data.is_live ? 'Connected · Live' : 'Connected · Offline');
+                return;
+            }
+
+            if (data.type === 'venue_live') {
+                setStatus('live', 'Connected · Live');
+                return;
+            }
+
+            if (data.type === 'venue_offline') {
+                setStatus('offline', 'Connected · Offline');
+                return;
+            }
+
+            switch (data.type) {
                 case 'tentative':
                     updateTentative(data);
                     break;
-
                 case 'committed':
                     commitSegment(data);
                     break;
-
                 case 'final':
                     finishUtterance(data);
                     break;
-
                 case 'session_end':
-                    addSystemMessage('Session ended');
-                    break;
-
+                    break; // handled by venue_offline
                 default:
                     console.log('Unknown message type:', data.type);
             }

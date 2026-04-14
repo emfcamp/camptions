@@ -1,6 +1,10 @@
 """Audio ingestion WebSocket endpoint."""
 
+from datetime import UTC, datetime
+
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+
+from ..services.distribution import distribution_manager
 
 router = APIRouter()
 
@@ -35,9 +39,17 @@ async def audio_ingest(
     await websocket.accept()
 
     transcription_manager = get_transcription_manager()
-
-    # Start transcription session
     session_id = await transcription_manager.start_session(venue_id, session_title)
+
+    await distribution_manager.broadcast(
+        venue_id,
+        {
+            "type": "venue_live",
+            "venue_id": venue_id,
+            "session_id": session_id,
+            "timestamp": datetime.now(UTC).isoformat(),
+        },
+    )
 
     try:
         await websocket.send_json(
@@ -49,7 +61,6 @@ async def audio_ingest(
         )
 
         while True:
-            # Receive raw audio bytes
             audio_data = await websocket.receive_bytes()
             await transcription_manager.process_audio(venue_id, audio_data)
 
@@ -59,3 +70,11 @@ async def audio_ingest(
         print(f"Audio ingestion error for {venue_id}: {e}")
     finally:
         await transcription_manager.end_session(venue_id)
+        await distribution_manager.broadcast(
+            venue_id,
+            {
+                "type": "venue_offline",
+                "venue_id": venue_id,
+                "timestamp": datetime.now(UTC).isoformat(),
+            },
+        )

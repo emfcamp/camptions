@@ -131,16 +131,6 @@
             color: white;
         }
 
-        .btn-secondary {
-            background: var(--text-muted);
-            color: #000;
-        }
-
-        .btn-success {
-            background: var(--success-color);
-            color: #000;
-        }
-
         .btn-danger {
             background: var(--error-color);
             color: white;
@@ -221,12 +211,8 @@
                         <span class="stat-value" id="statVenues">-</span>
                     </div>
                     <div class="stat">
-                        <span>Active Sessions</span>
-                        <span class="stat-value" id="statActiveSessions">-</span>
-                    </div>
-                    <div class="stat">
-                        <span>Total Sessions</span>
-                        <span class="stat-value" id="statTotalSessions">-</span>
+                        <span>Live Venues</span>
+                        <span class="stat-value" id="statLiveVenues">-</span>
                     </div>
                     <div class="stat">
                         <span>Total Segments</span>
@@ -270,28 +256,22 @@
     </div>
 
     <script>
-        // Show alert message
         function showAlert(message, type = 'success') {
             const container = document.getElementById('alertContainer');
             const alert = document.createElement('div');
             alert.className = `alert alert-${type}`;
             alert.textContent = message;
             container.appendChild(alert);
-
-            setTimeout(() => {
-                alert.remove();
-            }, 5000);
+            setTimeout(() => alert.remove(), 5000);
         }
 
-        // Fetch and display stats
         async function loadStats() {
             try {
                 const response = await fetch('/api/admin/stats');
                 const data = await response.json();
 
                 document.getElementById('statVenues').textContent = data.venues.total;
-                document.getElementById('statActiveSessions').textContent = data.venues.active;
-                document.getElementById('statTotalSessions').textContent = data.sessions.total;
+                document.getElementById('statLiveVenues').textContent = data.venues.active;
                 document.getElementById('statSegments').textContent = data.segments.total;
                 document.getElementById('statViewers').textContent = data.subscribers.total;
             } catch (e) {
@@ -299,7 +279,6 @@
             }
         }
 
-        // Fetch and display venues
         async function loadVenues() {
             try {
                 const [venuesRes, statsRes] = await Promise.all([
@@ -311,19 +290,12 @@
                 const stats = await statsRes.json();
                 const activeVenues = new Set(stats.venues.active_list);
 
-                const venueList = document.getElementById('venueList');
-                venueList.innerHTML = venues.map(v => `
+                document.getElementById('venueList').innerHTML = venues.map(v => `
                     <li class="venue-item">
                         <span class="venue-name">${escapeHtml(v.name)}</span>
-                        <div class="venue-status">
-                            <span class="status-badge ${activeVenues.has(v.id) ? 'live' : 'offline'}">
-                                ${activeVenues.has(v.id) ? 'Live' : 'Offline'}
-                            </span>
-                            ${activeVenues.has(v.id)
-                                ? `<button class="btn btn-danger btn-sm" onclick="stopSession('${v.id}')">Stop</button>`
-                                : `<button class="btn btn-success btn-sm" onclick="startSession('${v.id}')">Start</button>`
-                            }
-                        </div>
+                        <span class="status-badge ${activeVenues.has(v.id) ? 'live' : 'offline'}">
+                            ${activeVenues.has(v.id) ? 'Live' : 'Offline'}
+                        </span>
                     </li>
                 `).join('');
             } catch (e) {
@@ -331,14 +303,12 @@
             }
         }
 
-        // Fetch and display sessions
         async function loadSessions() {
             try {
                 const response = await fetch('/api/admin/sessions?limit=10');
                 const data = await response.json();
 
-                const sessionList = document.getElementById('sessionList');
-                sessionList.innerHTML = data.sessions.map(s => `
+                document.getElementById('sessionList').innerHTML = data.sessions.map(s => `
                     <li class="session-item">
                         <div class="session-title">
                             ${escapeHtml(s.title || s.venue_id)}
@@ -355,54 +325,13 @@
             }
         }
 
-        // Start a session
-        async function startSession(venueId) {
-            try {
-                const response = await fetch(`/api/admin/sessions/${venueId}/start`, {
-                    method: 'POST'
-                });
-
-                if (response.ok) {
-                    showAlert(`Session started for ${venueId}`);
-                    loadAll();
-                } else {
-                    const data = await response.json();
-                    showAlert(data.detail || 'Failed to start session', 'error');
-                }
-            } catch (e) {
-                showAlert('Failed to start session', 'error');
-            }
-        }
-
-        // Stop a session
-        async function stopSession(venueId) {
-            try {
-                const response = await fetch(`/api/admin/sessions/${venueId}/stop`, {
-                    method: 'POST'
-                });
-
-                if (response.ok) {
-                    showAlert(`Session stopped for ${venueId}`);
-                    loadAll();
-                } else {
-                    const data = await response.json();
-                    showAlert(data.detail || 'Failed to stop session', 'error');
-                }
-            } catch (e) {
-                showAlert('Failed to stop session', 'error');
-            }
-        }
-
-        // Initialize default venues
         async function initVenues() {
             try {
-                const response = await fetch('/api/admin/init-venues', {
-                    method: 'POST'
-                });
+                const response = await fetch('/api/admin/init-venues', { method: 'POST' });
 
                 if (response.ok) {
                     const data = await response.json();
-                    showAlert(`Created: ${data.created.join(', ') || 'none'}`);
+                    showAlert(`Created: ${data.created.join(', ') || 'none (all exist)'}`);
                     loadAll();
                 } else {
                     showAlert('Failed to initialize venues', 'error');
@@ -412,14 +341,11 @@
             }
         }
 
-        // Cleanup old data
         async function cleanup() {
             if (!confirm('This will delete old caption data. Continue?')) return;
 
             try {
-                const response = await fetch('/api/admin/cleanup', {
-                    method: 'POST'
-                });
+                const response = await fetch('/api/admin/cleanup', { method: 'POST' });
 
                 if (response.ok) {
                     const data = await response.json();
@@ -433,7 +359,6 @@
             }
         }
 
-        // Helper functions
         function escapeHtml(text) {
             const div = document.createElement('div');
             div.textContent = text || '';
@@ -442,18 +367,15 @@
 
         function formatDate(dateStr) {
             if (!dateStr) return '-';
-            const date = new Date(dateStr);
-            return date.toLocaleString();
+            return new Date(dateStr).toLocaleString();
         }
 
-        // Load all data
         function loadAll() {
             loadStats();
             loadVenues();
             loadSessions();
         }
 
-        // Initial load and auto-refresh
         loadAll();
         setInterval(loadAll, 5000);
     </script>

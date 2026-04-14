@@ -3,7 +3,7 @@
 from datetime import UTC, datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -29,50 +29,6 @@ def get_transcription_manager():
     if _transcription_manager is None:
         raise RuntimeError("TranscriptionManager not initialized")
     return _transcription_manager
-
-
-@router.post("/sessions/{venue_id}/start")
-async def start_session(
-    venue_id: str,
-    title: Optional[str] = None,
-    db: AsyncSession = Depends(get_db),
-) -> dict:
-    """Manually start a transcription session for a venue."""
-    # Verify venue exists
-    result = await db.execute(select(Venue).where(Venue.id == venue_id))
-    if not result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Venue not found")
-
-    transcription_manager = get_transcription_manager()
-
-    if transcription_manager.has_active_session(venue_id):
-        raise HTTPException(status_code=400, detail="Session already active for this venue")
-
-    session_id = await transcription_manager.start_session(venue_id, title)
-
-    return {
-        "status": "started",
-        "session_id": session_id,
-        "venue_id": venue_id,
-    }
-
-
-@router.post("/sessions/{venue_id}/stop")
-async def stop_session(venue_id: str) -> dict:
-    """Manually stop a transcription session for a venue."""
-    transcription_manager = get_transcription_manager()
-
-    if not transcription_manager.has_active_session(venue_id):
-        raise HTTPException(status_code=400, detail="No active session for this venue")
-
-    session_id = transcription_manager.get_session_id(venue_id)
-    await transcription_manager.end_session(venue_id)
-
-    return {
-        "status": "stopped",
-        "session_id": session_id,
-        "venue_id": venue_id,
-    }
 
 
 @router.get("/sessions")
@@ -115,20 +71,13 @@ async def list_sessions(
 @router.get("/stats")
 async def get_stats(db: AsyncSession = Depends(get_db)) -> dict:
     """Get system statistics."""
-    # Count venues
     venue_count = await db.scalar(select(func.count(Venue.id)))
-
-    # Count sessions
     session_count = await db.scalar(select(func.count(Session.id)))
-
-    # Count segments
     segment_count = await db.scalar(select(func.count(Segment.id)))
 
-    # Get active sessions
     transcription_manager = get_transcription_manager()
     active_venues = list(transcription_manager.venues.keys())
 
-    # Get total subscriber count
     total_subscribers = sum(
         distribution_manager.get_subscriber_count(v) for v in active_venues
     )
@@ -160,13 +109,11 @@ async def cleanup_old_data(
     hours = retention_hours or settings.caption_retention_hours
     cutoff = datetime.now(UTC) - timedelta(hours=hours)
 
-    # Delete old segments
     segment_result = await db.execute(
         delete(Segment).where(Segment.created_at < cutoff)
     )
     deleted_segments = segment_result.rowcount
 
-    # Delete old sessions that have ended
     session_result = await db.execute(
         delete(Session)
         .where(Session.ended_at.isnot(None))

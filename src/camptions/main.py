@@ -30,6 +30,7 @@ async def lifespan(app: FastAPI):
     # Inject transcription manager into routers (avoiding circular imports)
     audio.set_transcription_manager(transcription_manager)
     admin.set_transcription_manager(transcription_manager)
+    captions.set_transcription_manager(transcription_manager)
 
     # Store in app state for access if needed
     app.state.transcription_manager = transcription_manager
