@@ -98,11 +98,47 @@ Environment variables (prefix with `CAMPTIONS_`):
 
 ## Raspberry Pi Setup
 
+### DietPi Base Image
+
+We use [DietPi](https://dietpi.com/) as the base OS. The repo ships a [dietpi.txt](dietpi.txt) at the root with the first-boot automation settings we use for capture Pis (hostname `stage-pi-001`, ethernet enabled, SSH pubkey login only, automated install of ALSA / Git / Python 3 pip).
+
+1. Download the DietPi image for your Pi from [dietpi.com/#downloadinfo](https://dietpi.com/#downloadinfo) and flash it to an SD card with [Raspberry Pi Imager](https://www.raspberrypi.com/software/) or [balenaEtcher](https://etcher.balena.io/).
+2. Mount the `boot` partition on your workstation and copy [dietpi.txt](dietpi.txt) over the file already there:
+   ```bash
+   cp dietpi.txt /media/$USER/boot/dietpi.txt
+   ```
+3. Before booting, edit the copy on the SD card:
+   - Set `AUTO_SETUP_NET_HOSTNAME` to a unique name per Pi (e.g. `stage-a-pi`, `stage-b-pi`).
+   - Replace `AUTO_SETUP_GLOBAL_PASSWORD` with your own password.
+   - Replace `AUTO_SETUP_SSH_PUBKEY` with your own public key, or add additional `AUTO_SETUP_SSH_PUBKEY=` lines.
+   - If using WiFi, set `AUTO_SETUP_NET_WIFI_ENABLED=1` and edit `dietpi-wifi.txt` on the boot partition with your SSID/PSK.
+4. Eject the SD card, boot the Pi on the venue network, and wait ~5–10 minutes for first-run automation to finish (the Pi will reboot itself a couple of times).
+5. SSH in as `root` using your key:
+   ```bash
+   ssh root@stage-pi-001.local
+   ```
+6. Create an unprivileged user to run the capture service (the setup script refuses to install for `root`):
+   ```bash
+   adduser camptions
+   usermod -aG sudo camptions
+   mkdir -p /home/camptions/.ssh
+   cp /root/.ssh/authorized_keys /home/camptions/.ssh/
+   chown -R camptions:camptions /home/camptions/.ssh
+   chmod 700 /home/camptions/.ssh
+   ```
+7. Copy this repo's `raspberry-pi/` directory onto the Pi and run the relevant setup script below as the `camptions` user.
+
 ### Audio Capture
 
 ```bash
 cd raspberry-pi
 sudo ./setup-audio-capture.sh
+```
+
+After the script finishes, edit `/opt/camptions/config.env` to set `CAMPTIONS_SERVER` and `CAMPTIONS_VENUE`, then enable the service:
+
+```bash
+sudo systemctl enable --now camptions-capture
 ```
 
 ### Display Kiosk
