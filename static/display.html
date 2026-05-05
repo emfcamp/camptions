@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EMF Captions</title>
+    <title>Electromagnetic Field 2026 — Live Captions</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -14,7 +17,7 @@
         :root {
             --bg-color: #000000;
             --text-color: #ffffff;
-            --speaker-color: #ffcc00;
+            --speaker-color: #F77F02;
             --tentative-opacity: 0.6;
             --font-size: 4vw;
             --line-height: 1.4;
@@ -24,7 +27,8 @@
         body {
             background: var(--bg-color);
             color: var(--text-color);
-            font-family: 'Segoe UI', system-ui, sans-serif;
+            font-family: 'Raleway', 'Trebuchet MS', 'Liberation Sans', 'Open Sans', sans-serif;
+            font-weight: 400;
             font-size: var(--font-size);
             line-height: var(--line-height);
             min-height: 100vh;
@@ -32,18 +36,42 @@
             overflow: hidden;
         }
 
-        /* High contrast mode */
+        /* High contrast mode — preserves brand orange where readable */
         body.high-contrast {
             --bg-color: #000000;
-            --text-color: #ffff00;
-            --speaker-color: #00ffff;
+            --text-color: #F9E200;
+            --speaker-color: #2EADD9;
         }
 
         /* Light mode */
         body.light {
             --bg-color: #ffffff;
-            --text-color: #000000;
-            --speaker-color: #0066cc;
+            --text-color: #000730;
+            --speaker-color: #F77F02;
+        }
+
+        #brandMark {
+            position: fixed;
+            bottom: 1rem;
+            left: 1rem;
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+            opacity: 0.55;
+            font-size: 0.85rem;
+            font-weight: 600;
+            line-height: 1.05;
+            z-index: 90;
+            pointer-events: none;
+        }
+
+        #brandMark .brand-emblem {
+            width: 1.6rem;
+            height: 1.6rem;
+        }
+
+        #brandMark .brand-year {
+            color: var(--speaker-color);
         }
 
         #status {
@@ -53,27 +81,28 @@
             padding: 0.5rem 1rem;
             border-radius: 0.5rem;
             font-size: 1rem;
+            font-weight: 600;
             z-index: 100;
         }
 
         #status.live {
-            background: #22c55e;
-            color: #000;
+            background: #2AE28C;
+            color: #000730;
         }
 
         #status.offline {
-            background: #6b7280;
+            background: #5a6580;
             color: #fff;
         }
 
         #status.disconnected {
-            background: #ef4444;
+            background: #F5515E;
             color: #fff;
         }
 
         #status.reconnecting {
-            background: #f59e0b;
-            color: #000;
+            background: #F9E200;
+            color: #000730;
             animation: pulse 1s infinite;
         }
 
@@ -154,7 +183,7 @@
         }
 
         .talk-now-label {
-            color: var(--speaker-color);
+            color: #F77F02;
             font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.08em;
@@ -214,6 +243,20 @@
     </div>
     <div id="status" class="disconnected">Connecting...</div>
     <div id="captions"></div>
+    <div id="brandMark" aria-hidden="true">
+        <svg class="brand-emblem" viewBox="0 0 100 140" fill="none">
+            <line x1="50" y1="6" x2="50" y2="134" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
+            <circle cx="50" cy="70" r="20" stroke="currentColor" stroke-width="5" fill="none"/>
+            <path d="M37 70 Q43 60 50 70 T63 70" stroke="currentColor" stroke-width="4" fill="none" stroke-linecap="round"/>
+            <ellipse cx="50" cy="70" rx="34" ry="9" stroke="currentColor" stroke-width="5" fill="none" transform="rotate(-22 50 70)"/>
+            <g fill="currentColor">
+                <path d="M28 22 L30 28 L36 30 L30 32 L28 38 L26 32 L20 30 L26 28 Z"/>
+                <path d="M40 12 L41 15 L44 16 L41 17 L40 20 L39 17 L36 16 L39 15 Z"/>
+                <path d="M22 38 L23 40 L25 41 L23 42 L22 44 L21 42 L19 41 L21 40 Z"/>
+            </g>
+        </svg>
+        <span>Electromagnetic Field <span class="brand-year">2026</span></span>
+    </div>
 
     <script>
         // Configuration from URL params

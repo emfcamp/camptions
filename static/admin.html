@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>EMF Captions - Admin</title>
+    <title>Electromagnetic Field 2026 — Captions Admin</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600;700&display=swap" rel="stylesheet">
     <style>
         * {
             margin: 0;
@@ -12,20 +15,21 @@
         }
 
         :root {
-            --bg-color: #1a1a2e;
-            --surface-color: #16213e;
-            --text-color: #eaeaea;
-            --text-muted: #a0a0a0;
-            --accent-color: #e94560;
-            --success-color: #22c55e;
-            --warning-color: #f59e0b;
-            --error-color: #ef4444;
+            --bg-color: #000730;
+            --surface-color: #001a4d;
+            --text-color: #ffffff;
+            --text-muted: #a8b3d4;
+            --accent-color: #F77F02;
+            --success-color: #2AE28C;
+            --warning-color: #F9E200;
+            --error-color: #F5515E;
         }
 
         body {
             background: var(--bg-color);
             color: var(--text-color);
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            font-family: 'Raleway', 'Trebuchet MS', 'Liberation Sans', 'Open Sans', sans-serif;
+            font-weight: 400;
             min-height: 100vh;
             padding: 2rem;
         }
@@ -35,8 +39,41 @@
             margin: 0 auto;
         }
 
-        h1 {
+        .page-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
             margin-bottom: 2rem;
+        }
+
+        .page-header svg {
+            width: 3rem;
+            height: 3rem;
+            flex-shrink: 0;
+        }
+
+        .page-header .title-block {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.15;
+        }
+
+        .page-header .title-eyebrow {
+            font-size: 0.85rem;
+            font-weight: 600;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+        }
+
+        .page-header h1 {
+            margin: 0;
+            font-weight: 600;
+            font-size: 1.75rem;
+        }
+
+        .page-header .year {
+            color: var(--accent-color);
         }
 
         .grid {
@@ -54,6 +91,7 @@
         .card h2 {
             margin-bottom: 1rem;
             font-size: 1.25rem;
+            font-weight: 600;
             color: var(--accent-color);
         }
 
@@ -105,12 +143,14 @@
 
         .status-badge.live {
             background: var(--success-color);
-            color: #000;
+            color: #000730;
+            font-weight: 600;
         }
 
         .status-badge.offline {
             background: var(--text-muted);
-            color: #000;
+            color: #000730;
+            font-weight: 600;
         }
 
         .btn {
@@ -128,12 +168,14 @@
 
         .btn-primary {
             background: var(--accent-color);
-            color: white;
+            color: #000730;
+            font-weight: 600;
         }
 
         .btn-danger {
             background: var(--error-color);
-            color: white;
+            color: #ffffff;
+            font-weight: 600;
         }
 
         .actions {
@@ -200,7 +242,23 @@
     <div id="alertContainer"></div>
 
     <div class="container">
-        <h1>EMF Captions Admin</h1>
+        <header class="page-header">
+            <svg viewBox="0 0 100 140" fill="none" aria-hidden="true">
+                <line x1="50" y1="6" x2="50" y2="134" stroke="currentColor" stroke-width="4" stroke-linecap="round"/>
+                <circle cx="50" cy="70" r="20" stroke="currentColor" stroke-width="4" fill="none"/>
+                <path d="M37 70 Q43 60 50 70 T63 70" stroke="currentColor" stroke-width="3.5" fill="none" stroke-linecap="round"/>
+                <ellipse cx="50" cy="70" rx="34" ry="9" stroke="currentColor" stroke-width="4" fill="none" transform="rotate(-22 50 70)"/>
+                <g fill="currentColor">
+                    <path d="M28 22 L30 28 L36 30 L30 32 L28 38 L26 32 L20 30 L26 28 Z"/>
+                    <path d="M40 12 L41 15 L44 16 L41 17 L40 20 L39 17 L36 16 L39 15 Z"/>
+                    <path d="M22 38 L23 40 L25 41 L23 42 L22 44 L21 42 L19 41 L21 40 Z"/>
+                </g>
+            </svg>
+            <div class="title-block">
+                <span class="title-eyebrow">Electromagnetic Field <span class="year">2026</span></span>
+                <h1>Captions Admin</h1>
+            </div>
+        </header>
 
         <div class="grid">
             <div class="card">
