@@ -404,8 +404,14 @@
             { id: 'stage-c', name: 'Stage C' },
         ];
 
-        // State
-        let currentVenue = localStorage.getItem('venue') || 'stage-a';
+        // State — venue picked from URL path (/v/{id}), then localStorage, then default
+        function venueFromPath() {
+            const m = window.location.pathname.match(/^\/v\/([^/]+)\/?$/);
+            return m ? decodeURIComponent(m[1]) : null;
+        }
+
+        let currentVenue = venueFromPath() || localStorage.getItem('venue') || 'stage-a';
+        if (venueFromPath()) localStorage.setItem('venue', currentVenue);
         let ws = null;
         let fontSize = parseFloat(localStorage.getItem('fontSize')) || 1;
         let isDarkMode = localStorage.getItem('theme') !== 'light';
@@ -451,7 +457,7 @@
             });
         }
 
-        function selectVenue(venueId) {
+        function selectVenue(venueId, opts = {}) {
             if (venueId === currentVenue) return;
 
             currentVenue = venueId;
@@ -462,10 +468,24 @@
                 tab.classList.toggle('active', tab.dataset.venue === venueId);
             });
 
+            // Update URL — skip when called from popstate to avoid double history entry
+            if (!opts.skipPushState) {
+                const newPath = `/v/${encodeURIComponent(venueId)}`;
+                if (window.location.pathname !== newPath) {
+                    history.pushState({ venue: venueId }, '', newPath);
+                }
+            }
+
             // Clear captions and reconnect
             clearCaptions();
             connect();
         }
+
+        // Browser back/forward — sync venue with URL
+        window.addEventListener('popstate', () => {
+            const v = venueFromPath();
+            if (v && v !== currentVenue) selectVenue(v, { skipPushState: true });
+        });
 
         function clearCaptions() {
             captionsEl.innerHTML = '';

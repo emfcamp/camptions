@@ -259,9 +259,10 @@
     </div>
 
     <script>
-        // Configuration from URL params
+        // Configuration: venue comes from URL path (/display/{id}), with legacy ?venue= as fallback
         const params = new URLSearchParams(window.location.search);
-        const venue = params.get('venue') || 'stage-a';
+        const pathMatch = window.location.pathname.match(/^\/display\/([^/]+)\/?$/);
+        const venue = (pathMatch ? decodeURIComponent(pathMatch[1]) : params.get('venue')) || 'stage-a';
         const mode = params.get('mode') || 'dark';
         const fontSize = params.get('fontSize');
         const maxLines = parseInt(params.get('maxLines')) || 8;

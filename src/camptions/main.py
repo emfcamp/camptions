@@ -5,7 +5,7 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import RedirectResponse
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from .config import settings
@@ -76,21 +76,28 @@ if STATIC_DIR.exists():
 
 
 @app.get("/", include_in_schema=False)
-async def root():
-    """Redirect to viewer page."""
-    return RedirectResponse(url="/static/viewer.html")
+async def viewer_root():
+    return FileResponse(STATIC_DIR / "viewer.html")
+
+
+@app.get("/v/{venue_id}", include_in_schema=False)
+async def viewer_for_venue(venue_id: str):
+    return FileResponse(STATIC_DIR / "viewer.html")
 
 
 @app.get("/display", include_in_schema=False)
-async def display():
-    """Redirect to display page."""
-    return RedirectResponse(url="/static/display.html")
+async def display_default():
+    return FileResponse(STATIC_DIR / "display.html")
+
+
+@app.get("/display/{venue_id}", include_in_schema=False)
+async def display_for_venue(venue_id: str):
+    return FileResponse(STATIC_DIR / "display.html")
 
 
 @app.get("/admin", include_in_schema=False)
 async def admin_page():
-    """Redirect to admin page."""
-    return RedirectResponse(url="/static/admin.html")
+    return FileResponse(STATIC_DIR / "admin.html")
 
 
 @app.get("/health")
