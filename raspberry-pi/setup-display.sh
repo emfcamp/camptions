@@ -13,7 +13,6 @@ set -e
 # Configuration
 CAMPTIONS_URL="${CAMPTIONS_URL:-https://captions.emf.camp/display}"
 CAMPTIONS_VENUE="${CAMPTIONS_VENUE:-stage-a}"
-DISPLAY_USER="camptions"
 DISPLAY_ROTATION="${DISPLAY_ROTATION:-normal}"  # normal, left, right, inverted
 
 echo "========================================"
@@ -26,6 +25,20 @@ if [ "$EUID" -ne 0 ]; then
     echo "Please run as root: sudo $0"
     exit 1
 fi
+
+# Resolve the user the kiosk should run as — the one who invoked sudo.
+# This is destructive: it overwrites this user's openbox autostart and turns on
+# autologin. Use a Pi dedicated to caption display.
+DISPLAY_USER="${SUDO_USER:-$USER}"
+if [ "$DISPLAY_USER" = "root" ] || ! id "$DISPLAY_USER" &>/dev/null; then
+    echo "Error: Could not determine a non-root user."
+    echo "Run this script via sudo from a regular user account, e.g.:"
+    echo "  sudo ./setup-display.sh"
+    exit 1
+fi
+echo "Configuring kiosk for user: $DISPLAY_USER"
+echo "(This will enable autologin and replace the user's openbox autostart.)"
+echo ""
 
 echo "[1/9] Updating system packages..."
 apt-get update
@@ -41,12 +54,7 @@ apt-get install -y \
     unclutter \
     lightdm
 
-echo "[3/9] Creating display user..."
-if ! id "$DISPLAY_USER" &>/dev/null; then
-    useradd --create-home --shell /bin/bash "$DISPLAY_USER"
-fi
-
-# Add user to required groups
+echo "[3/9] Granting display/input groups to $DISPLAY_USER..."
 usermod -a -G video,audio,input,tty "$DISPLAY_USER"
 
 echo "[4/9] Configuring autologin..."
@@ -90,11 +98,11 @@ fi
 echo "[6/9] Creating kiosk startup script..."
 mkdir -p "/home/$DISPLAY_USER/.config/openbox"
 
-cat > "/home/$DISPLAY_USER/.config/openbox/autostart" << 'AUTOSTART_EOF'
+cat > "/home/$DISPLAY_USER/.config/openbox/autostart" << AUTOSTART_EOF
 #!/bin/bash
 
 # Load configuration
-source /home/camptions/camptions-display.conf 2>/dev/null || true
+source /home/$DISPLAY_USER/camptions-display.conf 2>/dev/null || true
 
 # Disable screen blanking and power management
 xset s off
@@ -108,35 +116,35 @@ unclutter -idle 0.5 -root &
 sleep 5
 
 # Build the caption display URL
-CAPTION_URL="${CAMPTIONS_URL:-https://captions.emf.camp/display}?venue=${CAMPTIONS_VENUE:-stage-a}&mode=${DISPLAY_MODE:-dark}"
+CAPTION_URL="\${CAMPTIONS_URL:-https://captions.emf.camp/display}?venue=\${CAMPTIONS_VENUE:-stage-a}&mode=\${DISPLAY_MODE:-dark}"
 
-if [ -n "$FONT_SIZE" ]; then
-    CAPTION_URL="${CAPTION_URL}&fontSize=${FONT_SIZE}"
+if [ -n "\$FONT_SIZE" ]; then
+    CAPTION_URL="\${CAPTION_URL}&fontSize=\${FONT_SIZE}"
 fi
 
-if [ -n "$MAX_LINES" ]; then
-    CAPTION_URL="${CAPTION_URL}&maxLines=${MAX_LINES}"
+if [ -n "\$MAX_LINES" ]; then
+    CAPTION_URL="\${CAPTION_URL}&maxLines=\${MAX_LINES}"
 fi
 
 # Start Chromium in kiosk mode
-chromium-browser \
-    --kiosk \
-    --noerrdialogs \
-    --disable-infobars \
-    --disable-session-crashed-bubble \
-    --disable-restore-session-state \
-    --no-first-run \
-    --start-fullscreen \
-    --autoplay-policy=no-user-gesture-required \
-    --disable-features=TranslateUI \
-    --check-for-update-interval=31536000 \
-    --disable-background-networking \
-    --disable-component-update \
-    --disable-default-apps \
-    --disable-extensions \
-    --disable-sync \
-    --incognito \
-    "$CAPTION_URL" &
+chromium-browser \\
+    --kiosk \\
+    --noerrdialogs \\
+    --disable-infobars \\
+    --disable-session-crashed-bubble \\
+    --disable-restore-session-state \\
+    --no-first-run \\
+    --start-fullscreen \\
+    --autoplay-policy=no-user-gesture-required \\
+    --disable-features=TranslateUI \\
+    --check-for-update-interval=31536000 \\
+    --disable-background-networking \\
+    --disable-component-update \\
+    --disable-default-apps \\
+    --disable-extensions \\
+    --disable-sync \\
+    --incognito \\
+    "\$CAPTION_URL" &
 AUTOSTART_EOF
 
 chown -R "$DISPLAY_USER:$DISPLAY_USER" "/home/$DISPLAY_USER/.config"
@@ -171,17 +179,17 @@ chown "$DISPLAY_USER:$DISPLAY_USER" "/home/$DISPLAY_USER/camptions-display.conf"
 echo "[8/9] Creating management scripts..."
 
 # Script to reload display
-cat > /usr/local/bin/camptions-display-reload << 'EOF'
+cat > /usr/local/bin/camptions-display-reload << EOF
 #!/bin/bash
 # Reload the caption display by restarting Chromium
 pkill -f chromium
 sleep 2
-sudo -u camptions openbox --replace &
+sudo -u $DISPLAY_USER openbox --replace &
 EOF
 chmod +x /usr/local/bin/camptions-display-reload
 
 # Script to show display status
-cat > /usr/local/bin/camptions-display-status << 'EOF'
+cat > /usr/local/bin/camptions-display-status << EOF
 #!/bin/bash
 echo "Camptions Display Status"
 echo "========================"
@@ -193,20 +201,20 @@ echo "Display:"
 DISPLAY=:0 xrandr 2>/dev/null | head -5 || echo "  Cannot query display"
 echo ""
 echo "Configuration:"
-cat /home/camptions/camptions-display.conf
+cat /home/$DISPLAY_USER/camptions-display.conf
 EOF
 chmod +x /usr/local/bin/camptions-display-status
 
 # Script to set venue
-cat > /usr/local/bin/camptions-set-venue << 'EOF'
+cat > /usr/local/bin/camptions-set-venue << EOF
 #!/bin/bash
-if [ -z "$1" ]; then
+if [ -z "\$1" ]; then
     echo "Usage: camptions-set-venue <venue-id>"
     echo "Example: camptions-set-venue stage-b"
     exit 1
 fi
-sed -i "s/^CAMPTIONS_VENUE=.*/CAMPTIONS_VENUE=$1/" /home/camptions/camptions-display.conf
-echo "Venue set to: $1"
+sed -i "s/^CAMPTIONS_VENUE=.*/CAMPTIONS_VENUE=\$1/" /home/$DISPLAY_USER/camptions-display.conf
+echo "Venue set to: \$1"
 echo "Reloading display..."
 camptions-display-reload
 EOF

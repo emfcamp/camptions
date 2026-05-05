@@ -40,26 +40,31 @@ class AudioCapture:
 
     def __init__(self, device_index: int = None):
         self.device_index = device_index
-        self.audio = pyaudio.PyAudio()
+        self.audio = None
         self.stream = None
 
     def list_devices(self):
         """List available audio input devices."""
-        print("\nAvailable audio input devices:")
-        print("-" * 50)
+        pa = pyaudio.PyAudio()
+        try:
+            print("\nAvailable audio input devices:")
+            print("-" * 50)
 
-        for i in range(self.audio.get_device_count()):
-            info = self.audio.get_device_info_by_index(i)
-            if info["maxInputChannels"] > 0:
-                print(f"  [{i}] {info['name']}")
-                print(
-                    f"      Channels: {info['maxInputChannels']}, "
-                    f"Rate: {int(info['defaultSampleRate'])}Hz"
-                )
-        print()
+            for i in range(pa.get_device_count()):
+                info = pa.get_device_info_by_index(i)
+                if info["maxInputChannels"] > 0:
+                    print(f"  [{i}] {info['name']}")
+                    print(
+                        f"      Channels: {info['maxInputChannels']}, "
+                        f"Rate: {int(info['defaultSampleRate'])}Hz"
+                    )
+            print()
+        finally:
+            pa.terminate()
 
     def start(self):
-        """Start audio capture stream."""
+        """(Re)open PyAudio so we see the current device topology, then start the stream."""
+        self.audio = pyaudio.PyAudio()
         self.stream = self.audio.open(
             format=FORMAT,
             channels=CHANNELS,
@@ -77,12 +82,20 @@ class AudioCapture:
         return self.stream.read(CHUNK_SIZE, exception_on_overflow=False)
 
     def stop(self):
-        """Stop audio capture."""
-        if self.stream:
-            self.stream.stop_stream()
-            self.stream.close()
+        """Tear down PyAudio entirely. Safe to call before start() or repeatedly."""
+        if self.stream is not None:
+            try:
+                self.stream.stop_stream()
+                self.stream.close()
+            except Exception:
+                pass
             self.stream = None
-        self.audio.terminate()
+        if self.audio is not None:
+            try:
+                self.audio.terminate()
+            except Exception:
+                pass
+            self.audio = None
         print("Audio capture stopped")
 
 
@@ -208,8 +221,7 @@ def main():
     parser.add_argument(
         "--venue",
         "-v",
-        required=True,
-        help="Venue ID (e.g., stage-a, stage-b)",
+        help="Venue ID (e.g., stage-a, stage-b) — required unless --list-devices",
     )
     parser.add_argument(
         "--device",
@@ -238,6 +250,9 @@ def main():
         audio.list_devices()
         audio.stop()
         return
+
+    if not args.venue:
+        parser.error("--venue/-v is required (omit only with --list-devices)")
 
     print("=" * 50)
     print("EMF Camptions Audio Capture")

@@ -11,7 +11,6 @@
 set -e
 
 # Configuration
-CAMPTIONS_USER="camptions"
 CAMPTIONS_DIR="/opt/camptions"
 CAMPTIONS_SERVER="${CAMPTIONS_SERVER:-ws://captions.emf.camp}"
 CAMPTIONS_VENUE="${CAMPTIONS_VENUE:-stage-a}"
@@ -27,40 +26,37 @@ if [ "$EUID" -ne 0 ]; then
     exit 1
 fi
 
-echo "[1/8] Updating system packages..."
-apt-get update
-apt-get upgrade -y
-
-echo "[2/8] Installing dependencies..."
-apt-get install -y \
-    python3 \
-    python3-pip \
-    python3-venv \
-    python3-pyaudio \
-    portaudio19-dev \
-    alsa-utils \
-    git
-
-echo "[3/8] Creating camptions user..."
-if ! id "$CAMPTIONS_USER" &>/dev/null; then
-    useradd --system --create-home --shell /bin/bash "$CAMPTIONS_USER"
+# Resolve the unprivileged user to run the capture as — the one who invoked sudo
+RUN_USER="${SUDO_USER:-$USER}"
+if [ "$RUN_USER" = "root" ] || ! id "$RUN_USER" &>/dev/null; then
+    echo "Error: Could not determine a non-root user."
+    echo "Run this script via sudo from a regular user account, e.g.:"
+    echo "  sudo ./setup-audio-capture.sh"
+    exit 1
 fi
+echo "Installing for user: $RUN_USER"
+echo ""
 
-# Add user to audio group
-usermod -a -G audio "$CAMPTIONS_USER"
+echo "[1/5] Refreshing apt index..."
+apt-get update
 
-echo "[4/8] Setting up application directory..."
+echo "[2/5] Installing dependencies..."
+# pyaudio + websockets come from apt as prebuilt binaries — much faster on a Pi
+# than pip-compiling pyaudio against portaudio19-dev.
+apt-get install -y --no-install-recommends \
+    python3 \
+    python3-pyaudio \
+    python3-websockets \
+    alsa-utils
+
+echo "[3/5] Granting audio group access to $RUN_USER..."
+usermod -a -G audio "$RUN_USER"
+
+echo "[4/5] Setting up application directory..."
 mkdir -p "$CAMPTIONS_DIR"
-chown "$CAMPTIONS_USER:$CAMPTIONS_USER" "$CAMPTIONS_DIR"
+chown "$RUN_USER:$RUN_USER" "$CAMPTIONS_DIR"
 
-echo "[5/8] Creating Python virtual environment..."
-sudo -u "$CAMPTIONS_USER" python3 -m venv "$CAMPTIONS_DIR/venv"
-sudo -u "$CAMPTIONS_USER" "$CAMPTIONS_DIR/venv/bin/pip" install --upgrade pip
-sudo -u "$CAMPTIONS_USER" "$CAMPTIONS_DIR/venv/bin/pip" install \
-    pyaudio \
-    websockets
-
-echo "[6/8] Installing capture client..."
+echo "[5/5] Installing capture client..."
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Copy capture_client.py if it exists in script directory
@@ -71,10 +67,9 @@ else
     echo "Please manually copy capture_client.py to $CAMPTIONS_DIR/"
 fi
 
-chown "$CAMPTIONS_USER:$CAMPTIONS_USER" "$CAMPTIONS_DIR/capture_client.py" 2>/dev/null || true
+chown "$RUN_USER:$RUN_USER" "$CAMPTIONS_DIR/capture_client.py" 2>/dev/null || true
 chmod +x "$CAMPTIONS_DIR/capture_client.py" 2>/dev/null || true
 
-echo "[7/8] Creating systemd service..."
 cat > /etc/systemd/system/camptions-capture.service << EOF
 [Unit]
 Description=EMF Camptions Audio Capture
@@ -83,11 +78,11 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-User=$CAMPTIONS_USER
-Group=$CAMPTIONS_USER
+User=$RUN_USER
+Group=$RUN_USER
 WorkingDirectory=$CAMPTIONS_DIR
 EnvironmentFile=$CAMPTIONS_DIR/config.env
-ExecStart=$CAMPTIONS_DIR/venv/bin/python3 $CAMPTIONS_DIR/capture_client.py \\
+ExecStart=/usr/bin/python3 $CAMPTIONS_DIR/capture_client.py \\
     --server "\${CAMPTIONS_SERVER}" \\
     --venue "\${CAMPTIONS_VENUE}"
 Restart=always
@@ -103,7 +98,6 @@ ReadWritePaths=$CAMPTIONS_DIR
 WantedBy=multi-user.target
 EOF
 
-echo "[8/8] Creating configuration file..."
 cat > "$CAMPTIONS_DIR/config.env" << EOF
 # EMF Camptions Audio Capture Configuration
 # Edit this file and restart the service to apply changes
@@ -119,12 +113,12 @@ CAMPTIONS_VENUE=$CAMPTIONS_VENUE
 CAMPTIONS_DEVICE=
 EOF
 
-chown "$CAMPTIONS_USER:$CAMPTIONS_USER" "$CAMPTIONS_DIR/config.env"
+chown "$RUN_USER:$RUN_USER" "$CAMPTIONS_DIR/config.env"
 
 # Create helper script for listing audio devices
 cat > /usr/local/bin/camptions-list-devices << EOF
 #!/bin/bash
-sudo -u $CAMPTIONS_USER $CAMPTIONS_DIR/venv/bin/python3 $CAMPTIONS_DIR/capture_client.py --list-devices
+sudo -u $RUN_USER /usr/bin/python3 $CAMPTIONS_DIR/capture_client.py --list-devices
 EOF
 chmod +x /usr/local/bin/camptions-list-devices
 
@@ -132,7 +126,7 @@ chmod +x /usr/local/bin/camptions-list-devices
 cat > /usr/local/bin/camptions-test << EOF
 #!/bin/bash
 source $CAMPTIONS_DIR/config.env
-sudo -u $CAMPTIONS_USER $CAMPTIONS_DIR/venv/bin/python3 $CAMPTIONS_DIR/capture_client.py \\
+sudo -u $RUN_USER /usr/bin/python3 $CAMPTIONS_DIR/capture_client.py \\
     --server "\$CAMPTIONS_SERVER" \\
     --venue "\$CAMPTIONS_VENUE" \\
     \${CAMPTIONS_DEVICE:+--device "\$CAMPTIONS_DEVICE"}
