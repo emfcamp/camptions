@@ -1,25 +1,17 @@
 services:
   camptions:
-    build:
-      context: .
-      args:
-        WHISPER_MODEL: small
-      secrets:
-        - hf_token
+    build: .
     ports:
       - "8000:8000"
     environment:
-      - CAMPTIONS_HOST=0.0.0.0
-      - CAMPTIONS_PORT=8000
       - CAMPTIONS_DATABASE_URL=sqlite+aiosqlite:///./data/camptions.db
       - CAMPTIONS_WHISPER_MODEL=small
       - CAMPTIONS_WHISPER_LANGUAGE=en
-      - CAMPTIONS_WHISPER_BACKEND=auto
-      - HF_TOKEN=${HF_TOKEN:-}
+      - HF_TKN_FILE=./token
     volumes:
       - ./data:/app/data
+      - whisper-cache:/root/.cache/huggingface/hub
     restart: unless-stopped
 
-secrets:
-  hf_token:
-    environment: HF_TOKEN
+volumes:
+  whisper-cache:
