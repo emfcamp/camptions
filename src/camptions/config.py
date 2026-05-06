@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./camptions.db"
 
     # WhisperLiveKit
-    whisper_model: str = "medium"
+    whisper_model: str = "small"
     whisper_language: str = "en"
     whisper_backend: Literal["auto", "faster-whisper", "whisper"] = "auto"
     whisper_backend_policy: Literal["simulstreaming", "localagreement"] = "simulstreaming"

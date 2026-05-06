@@ -3,7 +3,7 @@ services:
     build:
       context: .
       args:
-        WHISPER_MODEL: medium
+        WHISPER_MODEL: small
       secrets:
         - hf_token
     ports:
@@ -18,12 +18,8 @@ services:
       - HF_TOKEN=${HF_TOKEN:-}
     volumes:
       - ./data:/app/data
-      - whisper-cache:/root/.cache/huggingface
     restart: unless-stopped
 
 secrets:
   hf_token:
     environment: HF_TOKEN
-
-volumes:
-  whisper-cache:

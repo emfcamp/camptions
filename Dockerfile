@@ -18,7 +18,18 @@ RUN mkdir -p src/camptions && touch src/camptions/__init__.py \
     && pip install --no-cache-dir ".[gpu]" \
     && rm -rf src/
 
-# Copy real source — only these layers re-run on src/ changes, not the pip above.
+# Pre-download the Whisper model. This layer is cached as long as WHISPER_MODEL
+# doesn't change — placing it before COPY src/ ensures source edits don't
+# bust this cache and force a re-download.
+# HF_TOKEN is passed as a BuildKit secret so it is never stored in any image layer.
+ENV HF_HOME=/app/hf-cache
+ARG WHISPER_MODEL=small
+RUN --mount=type=secret,id=hf_token \
+    HF_TOKEN=$(cat /run/secrets/hf_token 2>/dev/null || true) \
+    python -c "from faster_whisper import WhisperModel; WhisperModel('${WHISPER_MODEL}')" \
+    && echo "Model downloaded to $HF_HOME"
+
+# Copy real source — only these layers re-run on src/ changes, not pip or model download.
 COPY src/ src/
 COPY static/ static/
 COPY alembic/ alembic/
@@ -26,15 +37,6 @@ COPY alembic.ini .
 
 # Install the local package only (no deps to download — all already installed above).
 RUN pip install --no-cache-dir --no-deps .
-
-# Pre-download the Whisper model into the image so startup is instant and
-# the server works without internet access (e.g. at EMF Camp).
-# The volume mount in docker-compose still takes precedence at runtime if present.
-# HF_TOKEN is passed as a BuildKit secret so it is never stored in any image layer.
-ARG WHISPER_MODEL=small
-RUN --mount=type=secret,id=hf_token \
-    HF_TOKEN=$(cat /run/secrets/hf_token 2>/dev/null || true) \
-    python -c "from faster_whisper import WhisperModel; WhisperModel('${WHISPER_MODEL}')"
 
 # Create data directory
 RUN mkdir -p /app/data

@@ -89,7 +89,7 @@ Environment variables (prefix with `CAMPTIONS_`):
 | `HOST` | `0.0.0.0` | Server bind address |
 | `PORT` | `8000` | Server port |
 | `DATABASE_URL` | `sqlite+aiosqlite:///./camptions.db` | Database connection string |
-| `WHISPER_MODEL` | `medium` | Whisper model size |
+| `WHISPER_MODEL` | `small` | Whisper model size |
 | `WHISPER_LANGUAGE` | `en` | Transcription language |
 | `WHISPER_BACKEND` | `auto` | Backend: auto, faster-whisper, whisper |
 | `ENABLE_VAD` | `true` | Enable voice activity detection |

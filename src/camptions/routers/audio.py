@@ -1,5 +1,6 @@
 """Audio ingestion WebSocket endpoint."""
 
+import asyncio
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
@@ -63,6 +64,7 @@ async def audio_ingest(
         while True:
             audio_data = await websocket.receive_bytes()
             await transcription_manager.process_audio(venue_id, audio_data)
+            await asyncio.sleep(0)  # yield to let _process_results consume results
 
     except WebSocketDisconnect:
         print(f"Audio source disconnected: {venue_id}")

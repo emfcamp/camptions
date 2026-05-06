@@ -5,7 +5,8 @@ EMF Camptions - Raspberry Pi Audio Capture Client
 Captures audio from USB microphone/audio interface and streams
 to the central camptions server via WebSocket.
 
-Audio format: 16kHz, 16-bit signed, mono (s16le)
+USB audio class devices typically don't support 16 kHz capture, so we
+capture at 44.1 kHz (the universal fallback) and let the server resample.
 """
 
 import argparse
@@ -27,11 +28,13 @@ except ImportError:
     sys.exit(1)
 
 
-# Audio configuration matching WhisperLiveKit expectations
-SAMPLE_RATE = 16000
+# USB audio class devices don't support 16 kHz; capture at 44.1 kHz and let
+# the server resample before passing to WhisperLiveKit.
+CAPTURE_RATE = 44100
 CHANNELS = 1
+SAMPLE_WIDTH_BYTES = 2  # paInt16 → 2 bytes per sample
 CHUNK_DURATION_MS = 100  # Send audio every 100ms
-CHUNK_SIZE = int(SAMPLE_RATE * CHUNK_DURATION_MS / 1000)
+CHUNK_SIZE = int(CAPTURE_RATE * CHUNK_DURATION_MS / 1000)
 FORMAT = pyaudio.paInt16
 
 
@@ -68,15 +71,18 @@ class AudioCapture:
         self.stream = self.audio.open(
             format=FORMAT,
             channels=CHANNELS,
-            rate=SAMPLE_RATE,
+            rate=CAPTURE_RATE,
             input=True,
             input_device_index=self.device_index,
             frames_per_buffer=CHUNK_SIZE,
         )
-        print(f"Audio capture started (device: {self.device_index or 'default'})")
+        print(
+            f"Audio capture started (device: {self.device_index or 'default'}, "
+            f"{CAPTURE_RATE}Hz)"
+        )
 
     def read(self) -> bytes:
-        """Read a chunk of audio data."""
+        """Read a chunk of audio."""
         if self.stream is None:
             raise RuntimeError("Audio capture not started")
         return self.stream.read(CHUNK_SIZE, exception_on_overflow=False)
@@ -175,7 +181,7 @@ async def run_capture(
         loop.add_signal_handler(sig, signal_handler)
 
     reconnect_delay = 1
-    max_reconnect_delay = 60
+    max_reconnect_delay = 15
 
     while not stop_event.is_set():
         try:

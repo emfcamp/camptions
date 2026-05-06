@@ -1,10 +1,29 @@
 """WhisperLiveKit transcription service."""
 
 import asyncio
+import traceback
 import uuid
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Optional
+
+import numpy as np
+
+# Pi clients capture at 44.1 kHz (USB audio class minimum).
+# AudioProcessor in PCM-input mode expects 16 kHz s16le mono.
+_INGEST_RATE = 44100
+_WHISPER_RATE = 16000
+
+
+def _resample_to_16k(raw: bytes) -> bytes:
+    samples = np.frombuffer(raw, dtype=np.int16)
+    out_len = int(len(samples) * _WHISPER_RATE / _INGEST_RATE)
+    resampled = np.interp(
+        np.linspace(0, len(samples) - 1, out_len),
+        np.arange(len(samples)),
+        samples,
+    ).astype(np.int16)
+    return resampled.tobytes()
 
 from ..config import Settings
 from ..database import get_db_session
@@ -19,7 +38,9 @@ class VenueTranscriber:
     venue_id: str
     session_id: str
     audio_processor: Any  # WhisperLiveKit AudioProcessor
+    results_generator: Any = None  # async generator from create_tasks()
     sequence: int = 0
+    lines_sent: int = 0  # how many FrontData.lines we've already broadcast
     _task: Optional[asyncio.Task] = None
 
 
@@ -41,12 +62,13 @@ class TranscriptionManager:
             from whisperlivekit import TranscriptionEngine
 
             self.engine = TranscriptionEngine(
-                model=self.settings.whisper_model,
+                model_size=self.settings.whisper_model,
                 lan=self.settings.whisper_language,
                 backend=self.settings.whisper_backend,
                 backend_policy=self.settings.whisper_backend_policy,
                 diarization=self.settings.enable_diarization,
                 vad=self.settings.enable_vad,
+                pcm_input=True,
             )
             self._started = True
         except ImportError:
@@ -88,15 +110,22 @@ class TranscriptionManager:
             except ImportError:
                 pass
 
+        # Call create_tasks() now so the generator is ready before audio arrives.
+        # Doing this eagerly prevents the event loop from starving _process_results
+        # while the audio receive loop runs.
+        results_generator = None
+        if audio_processor is not None:
+            results_generator = await audio_processor.create_tasks()
+
         venue_transcriber = VenueTranscriber(
             venue_id=venue_id,
             session_id=session_id,
             audio_processor=audio_processor,
+            results_generator=results_generator,
         )
         self.venues[venue_id] = venue_transcriber
 
-        # Start processing task if audio processor is available
-        if audio_processor is not None:
+        if results_generator is not None:
             venue_transcriber._task = asyncio.create_task(self._process_results(venue_id))
 
         return session_id
@@ -143,7 +172,7 @@ class TranscriptionManager:
 
         venue = self.venues[venue_id]
         if venue.audio_processor is not None:
-            await venue.audio_processor.process_audio(audio_data)
+            await venue.audio_processor.process_audio(_resample_to_16k(audio_data))
 
     def has_active_session(self, venue_id: str) -> bool:
         """Check if venue has an active session."""
@@ -165,48 +194,62 @@ class TranscriptionManager:
             return
 
         try:
-            results_generator = await venue.audio_processor.create_tasks()
+            print(f"[{venue_id}] _process_results: consuming generator")
 
-            async for result in results_generator:
+            async for result in venue.results_generator:
                 if venue_id not in self.venues:
                     break
 
-                venue.sequence += 1
+                lines = getattr(result, "lines", [])
+                buffer = getattr(result, "buffer_transcription", "").strip()
 
-                # Map WhisperLiveKit output to our segment format
-                segment = {
-                    "id": str(uuid.uuid4()),
-                    "session_id": venue.session_id,
-                    "venue_id": venue_id,
-                    "sequence": venue.sequence,
-                    "type": self._map_segment_type(result.get("type", "partial")),
-                    "text": result.get("text", ""),
-                    "speaker": result.get("speaker"),
-                    "start_time": result.get("start"),
-                    "end_time": result.get("end"),
-                    "timestamp": datetime.now(UTC).isoformat(),
-                }
-
-                # Broadcast to connected clients
-                await distribution_manager.broadcast(venue_id, segment)
-
-                # Store committed segments
-                if segment["type"] == "committed":
+                # Emit any newly committed lines (lines accumulates; only send new ones)
+                for seg in lines[venue.lines_sent:]:
+                    venue.lines_sent += 1
+                    venue.sequence += 1
+                    text = seg.text.strip()
+                    if not text:
+                        continue
+                    speaker = None if getattr(seg, "speaker", -1) < 0 else str(seg.speaker)
+                    segment = {
+                        "id": str(uuid.uuid4()),
+                        "session_id": venue.session_id,
+                        "venue_id": venue_id,
+                        "sequence": venue.sequence,
+                        "type": "committed",
+                        "text": text,
+                        "speaker": speaker,
+                        "start_time": getattr(seg, "start", None),
+                        "end_time": getattr(seg, "end", None),
+                        "timestamp": datetime.now(UTC).isoformat(),
+                    }
+                    print(f"[{venue_id}] committed: {text!r}")
+                    await distribution_manager.broadcast(venue_id, segment)
                     await self._store_segment(segment)
+
+                # Emit tentative buffer (replaces previous tentative on every update)
+                if buffer:
+                    venue.sequence += 1
+                    tentative = {
+                        "id": str(uuid.uuid4()),
+                        "session_id": venue.session_id,
+                        "venue_id": venue_id,
+                        "sequence": venue.sequence,
+                        "type": "tentative",
+                        "text": buffer,
+                        "speaker": None,
+                        "start_time": None,
+                        "end_time": None,
+                        "timestamp": datetime.now(UTC).isoformat(),
+                    }
+                    print(f"[{venue_id}] tentative: {buffer!r}")
+                    await distribution_manager.broadcast(venue_id, tentative)
 
         except asyncio.CancelledError:
             raise
         except Exception as e:
             print(f"Error processing results for {venue_id}: {e}")
-
-    def _map_segment_type(self, wlk_type: str) -> str:
-        """Map WhisperLiveKit types to our types."""
-        mapping = {
-            "partial": "tentative",
-            "complete": "committed",
-            "final": "final",
-        }
-        return mapping.get(wlk_type, "tentative")
+            traceback.print_exc()
 
     async def _store_segment(self, segment: dict) -> None:
         """Persist committed segment to database."""
