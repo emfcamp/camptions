@@ -18,7 +18,7 @@
             --bg-color: #000000;
             --text-color: #ffffff;
             --tentative-opacity: 0.6;
-            --font-size: 4vw;
+            --font-size: 3vw;
             --line-height: 1.4;
             --padding: 2rem;
         }
@@ -256,6 +256,7 @@
         let reconnectAttempts = 0;
         let currentBlock = null;      // <p class="caption-block"> for the current talk/session
         let currentTalkTitle = null;
+        let scrollAnimId = null;
 
         const captionsEl = document.getElementById('captions');
         const statusEl = document.getElementById('status');
@@ -391,10 +392,20 @@
         }
 
         function scrollToBottom(instant = false) {
-            window.scrollTo({
-                top: document.documentElement.scrollHeight,
-                behavior: instant ? 'instant' : 'smooth',
-            });
+            if (scrollAnimId) { cancelAnimationFrame(scrollAnimId); scrollAnimId = null; }
+            const end = document.documentElement.scrollHeight - window.innerHeight;
+            if (instant) { window.scrollTo(0, end); return; }
+            const start = window.scrollY;
+            const diff = end - start;
+            if (diff <= 1) return;
+            const t0 = performance.now();
+            function step(t) {
+                const p = Math.min((t - t0) / 800, 1);
+                const ease = 1 - Math.pow(1 - p, 3); // ease-out cubic
+                window.scrollTo(0, start + diff * ease);
+                scrollAnimId = p < 1 ? requestAnimationFrame(step) : null;
+            }
+            scrollAnimId = requestAnimationFrame(step);
         }
 
         // --- history -----------------------------------------------------
