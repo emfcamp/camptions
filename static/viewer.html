@@ -165,7 +165,7 @@
         main {
             flex: 1;
             padding: 1rem;
-            padding-bottom: 5rem; /* room for next incoming line */
+            padding-bottom: 10rem; /* must exceed the JS scroll buffer (80px) */
             overflow-y: auto;
         }
 
@@ -412,6 +412,7 @@
         let currentBlock = null;   // .caption-block card for the current talk/session
         let currentTalk = null;    // title of the current talk, for change detection
         let scrollAnimId = null;
+        let userScrolledUp = false;
 
         // Elements
         const venueTabsEl = document.getElementById('venueTabs');
@@ -489,6 +490,7 @@
             document.getElementById('nowPlaying').style.display = 'none';
             currentBlock = null;
             currentTalk = null;
+            userScrolledUp = false;
         }
 
         function setStatus(dot, text) {
@@ -645,29 +647,55 @@
             scrollToBottom();
         }
 
-        function scrollToBottom(instant = false) {
-            if (scrollAnimId) { cancelAnimationFrame(scrollAnimId); scrollAnimId = null; }
-            // main clips on desktop; window scrolls on mobile — animate whichever has room
+        function getScrollEl() {
             const mainEl = document.querySelector('main');
-            const el = (mainEl && mainEl.scrollHeight > mainEl.clientHeight) ? mainEl : null;
-            const getPos = () => el ? el.scrollTop : window.scrollY;
-            const getEnd = () => el
+            return (mainEl && mainEl.scrollHeight > mainEl.clientHeight) ? mainEl : null;
+        }
+
+        function isNearBottom(threshold = 150) {
+            const el = getScrollEl();
+            if (el) return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
+            return document.documentElement.scrollHeight - window.scrollY - window.innerHeight < threshold;
+        }
+
+        // Buffer keeps scroll position away from the absolute bottom so tentative→committed
+        // shrinkage doesn't trigger a browser scroll-clamp (which causes visible jumps).
+        // Must be less than the CSS padding-bottom (10rem ≈ 160px).
+        const SCROLL_BUFFER = 80; // px
+
+        function scrollToBottom(instant = false) {
+            if (!instant && userScrolledUp) return;
+            if (scrollAnimId) { cancelAnimationFrame(scrollAnimId); scrollAnimId = null; }
+            const el = getScrollEl();
+            const getRawMax = () => el
                 ? el.scrollHeight - el.clientHeight
                 : document.documentElement.scrollHeight - window.innerHeight;
+            const getTarget = () => Math.max(0, getRawMax() - SCROLL_BUFFER);
+            const getPos = () => el ? el.scrollTop : window.scrollY;
             const setPos = (p) => { if (el) el.scrollTop = p; else window.scrollTo(0, p); };
-            const end = getEnd();
-            if (instant) { setPos(end); return; }
-            const start = getPos();
-            const diff = end - start;
-            if (diff <= 1) return;
-            const t0 = performance.now();
+            if (instant) { setPos(getTarget()); return; }
+            if (getTarget() - getPos() < 1) return;
+            let lastT = null;
             function step(t) {
-                const p = Math.min((t - t0) / 800, 1);
-                const ease = 1 - Math.pow(1 - p, 3); // ease-out cubic
-                setPos(start + diff * ease);
-                scrollAnimId = p < 1 ? requestAnimationFrame(step) : null;
+                if (lastT === null) lastT = t;
+                const dt = Math.min((t - lastT) / 1000, 0.1);
+                lastT = t;
+                const gap = getTarget() - getPos();
+                if (gap < 1) { scrollAnimId = null; return; }
+                setPos(getPos() + gap * (1 - Math.exp(-dt / 0.4)));
+                scrollAnimId = requestAnimationFrame(step);
             }
             scrollAnimId = requestAnimationFrame(step);
+        }
+
+        function setupScrollListener() {
+            function onScroll() {
+                if (scrollAnimId) return; // ignore programmatic scrolls
+                userScrolledUp = !isNearBottom();
+            }
+            window.addEventListener('scroll', onScroll, { passive: true });
+            const mainEl = document.querySelector('main');
+            if (mainEl) mainEl.addEventListener('scroll', onScroll, { passive: true });
         }
 
         function updateSchedule(data) {
@@ -749,6 +777,7 @@
         }
 
         // Initialize
+        setupScrollListener();
         loadVenues();
         document.body.classList.toggle('light', !isDarkMode);
         document.documentElement.style.setProperty('--caption-font-size', `${fontSize}rem`);

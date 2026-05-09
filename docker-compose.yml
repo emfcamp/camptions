@@ -7,6 +7,7 @@ services:
         --raw_pcm_input
         --max_clients 4
         --max_connection_time 3600
+        --omp_num_threads 4
     volumes:
       - whisper-cache:/root/.cache/whisper-live
     environment:

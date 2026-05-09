@@ -408,7 +408,6 @@ class TranscriptionManager:
                 "end_time": seg.get("end"),
                 "timestamp": datetime.now(UTC).isoformat(),
             }
-            log.info("[%s] committed: %r", venue.venue_id, text)
             await distribution_manager.broadcast(venue.venue_id, segment)
             await self._store(segment)
 

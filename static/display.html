@@ -106,12 +106,8 @@
         }
 
         #captions {
-            display: flex;
-            flex-direction: column;
-            justify-content: flex-end;
-            min-height: calc(100vh - 4rem);
-            padding-top: 3rem; /* space for talk header when visible */
-            padding-bottom: 3em; /* room for next incoming line */
+            padding-top: 3rem;
+            padding-bottom: 20vw; /* must exceed the JS scroll buffer (15vw) */
         }
 
         /* One block = one talk. Committed text flows inline; tentative appended at end. */
@@ -391,19 +387,27 @@
             return div.innerHTML;
         }
 
+        // Buffer keeps scrollY away from the absolute bottom, absorbing tentative→committed
+        // shrinkage without triggering a browser scroll-clamp (which causes visible jumps).
+        // Must be less than the CSS padding-bottom (20vw) so the last line stays visible.
+        const SCROLL_BUFFER = () => window.innerWidth * 0.15; // 15vw
+
         function scrollToBottom(instant = false) {
             if (scrollAnimId) { cancelAnimationFrame(scrollAnimId); scrollAnimId = null; }
-            const end = document.documentElement.scrollHeight - window.innerHeight;
-            if (instant) { window.scrollTo(0, end); return; }
-            const start = window.scrollY;
-            const diff = end - start;
-            if (diff <= 1) return;
-            const t0 = performance.now();
+            const getTarget = () => Math.max(0,
+                document.documentElement.scrollHeight - window.innerHeight - SCROLL_BUFFER());
+            if (instant) { window.scrollTo(0, getTarget()); return; }
+            if (getTarget() - window.scrollY < 1) return;
+            let lastT = null;
             function step(t) {
-                const p = Math.min((t - t0) / 800, 1);
-                const ease = 1 - Math.pow(1 - p, 3); // ease-out cubic
-                window.scrollTo(0, start + diff * ease);
-                scrollAnimId = p < 1 ? requestAnimationFrame(step) : null;
+                if (lastT === null) lastT = t;
+                const dt = Math.min((t - lastT) / 1000, 0.1);
+                lastT = t;
+                const target = getTarget();
+                const gap = target - window.scrollY;
+                if (gap < 1) { scrollAnimId = null; return; }
+                window.scrollTo(0, window.scrollY + gap * (1 - Math.exp(-dt / 0.4)));
+                scrollAnimId = requestAnimationFrame(step);
             }
             scrollAnimId = requestAnimationFrame(step);
         }
