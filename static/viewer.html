@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=yes">
-    <meta name="theme-color" content="#000730">
+    <meta name="theme-color" content="#000000">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <title>Electromagnetic Field 2026 — Live Captions</title>
     <!-- Yes, this was vibe coded, Claude is great. -->
@@ -19,8 +19,8 @@
         }
 
         :root {
-            --bg-color: #000730;
-            --surface-color: #001a4d;
+            --bg-color: #000000;
+            --surface-color: rgba(255,255,255,0.08);
             --text-color: #ffffff;
             --text-muted: #a8b3d4;
             --accent-color: #F77F02;
@@ -31,13 +31,28 @@
         }
 
         body {
-            background: var(--bg-color);
+            position: relative;
+            background-color: var(--bg-color);
             color: var(--text-color);
             font-family: 'Raleway', 'Trebuchet MS', 'Liberation Sans', 'Open Sans', sans-serif;
             font-weight: 400;
             min-height: 100vh;
+            height: 100vh;
             display: flex;
             flex-direction: column;
+            overflow: hidden;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: url('/static/bg-2.png');
+            background-size: cover;
+            background-position: center;
+            opacity: 0.1;
+            pointer-events: none;
+            z-index: 0;
         }
 
         body.light {
@@ -124,6 +139,9 @@
             background: var(--surface-color);
             padding: 1rem;
             border-bottom: 1px solid rgba(255,255,255,0.1);
+            position: sticky;
+            top: 4.75rem;
+            z-index: 90;
         }
 
         .venue-tabs {
@@ -163,16 +181,37 @@
         }
 
         main {
-            flex: 1;
+            flex: 1 1 auto;
+            position: relative;
+            z-index: 1;
             padding: 1rem;
-            padding-bottom: 10rem; /* must exceed the JS scroll buffer (80px) */
+            padding-bottom: 10rem;
             overflow-y: auto;
+            scroll-behavior: smooth;
+        }
+
+        footer {
+            background: var(--surface-color);
+            padding: 1rem;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            position: sticky;
+            bottom: 0;
+            z-index: 100;
         }
 
         #captions {
-            display: flex;
-            flex-direction: column;
+            display: grid;
+            align-items: end;
+            min-height: 100%;
             gap: 0.75rem;
+        }
+
+        #captionsInner {
+            display: grid;
+            gap: 0.75rem;
+            transition: transform 2s ease-out;
+            transform: translateY(0);
+            width: 100%;
         }
 
         /* One block per talk/session — text flows inline within it */
@@ -180,7 +219,6 @@
             padding: 0.75rem;
             background: var(--surface-color);
             border-radius: 0.5rem;
-            border-left: 3px solid var(--success-color);
             animation: slideIn 0.2s ease-out;
         }
 
@@ -261,6 +299,7 @@
 
         /* Now playing banner */
         .now-playing {
+            display: none;
             background: var(--surface-color);
             border-left: 3px solid var(--accent-color);
             padding: 0.75rem 1rem;
@@ -296,6 +335,7 @@
         }
 
         .next-talk {
+            display: none;
             margin-top: 0.5rem;
             padding-top: 0.5rem;
             border-top: 1px solid rgba(255,255,255,0.08);
@@ -311,6 +351,11 @@
             margin-bottom: 0.1rem;
         }
 
+        .next-detail {
+            color: var(--text-muted);
+            font-size: 0.7rem;
+        }
+
         /* Empty state */
         .empty-state {
             text-align: center;
@@ -321,6 +366,37 @@
         .empty-state-icon {
             font-size: 3rem;
             margin-bottom: 1rem;
+        }
+
+        #jumpToBottomBtn {
+            display: none;
+            position: fixed;
+            bottom: 6.5rem;
+            right: 1.5rem;
+            z-index: 95;
+            width: 3rem;
+            height: 3rem;
+            border-radius: 50%;
+            background: var(--accent-color);
+            border: none;
+            color: #000730;
+            font-size: 1.25rem;
+            cursor: pointer;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 0;
+        }
+
+        #jumpToBottomBtn:hover {
+            transform: scale(1.1);
+            box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+        }
+
+        #jumpToBottomBtn.hidden {
+            display: none;
         }
     </style>
 </head>
@@ -361,22 +437,25 @@
             <div class="now-playing-title" id="nowTitle"></div>
             <div class="now-playing-speaker" id="nowSpeaker"></div>
             <div class="now-playing-time" id="nowTime"></div>
-            <div class="next-talk" id="nextTalk" style="display:none">
+            <div class="next-talk" id="nextTalk">
                 <div class="next-talk-label">Up next</div>
                 <div id="nextTitle"></div>
-                <div id="nextSpeaker" style="color:var(--text-muted);font-size:0.7rem"></div>
-                <div id="nextTime" style="color:var(--text-muted);font-size:0.7rem"></div>
+                <div id="nextSpeaker" class="next-detail"></div>
+                <div id="nextTime" class="next-detail"></div>
             </div>
         </div>
         <div id="captions">
-            <div class="empty-state" id="emptyState">
-                <div class="empty-state-icon">&#127908;</div>
-                <p>Waiting for captions...</p>
-                <p style="font-size: 0.875rem; margin-top: 0.5rem;">
-                    Select a venue above to see live transcription
-                </p>
+            <div id="captionsInner">
+                <div class="empty-state" id="emptyState">
+                    <div class="empty-state-icon">&#127908;</div>
+                    <p>Waiting for captions...</p>
+                    <p style="font-size: 0.875rem; margin-top: 0.5rem;">
+                        Select a venue above to see live transcription
+                    </p>
+                </div>
             </div>
         </div>
+        <button id="jumpToBottomBtn" class="hidden" title="Jump to latest">↓</button>
     </main>
 
     <footer>
@@ -390,343 +469,47 @@
     </footer>
 
     <script>
-        // Configuration - will be loaded from API
-        let venues = [
+        const DEFAULT_VENUES = [
             { id: 'stage-a', name: 'Stage A' },
             { id: 'stage-b', name: 'Stage B' },
             { id: 'stage-c', name: 'Stage C' },
         ];
 
-        // State — venue picked from URL path (/v/{id}), then localStorage, then default
-        function venueFromPath() {
-            const m = window.location.pathname.match(/^\/v\/([^/]+)\/?$/);
-            return m ? decodeURIComponent(m[1]) : null;
-        }
-
-        let currentVenue = venueFromPath() || localStorage.getItem('venue') || 'stage-a';
-        if (venueFromPath()) localStorage.setItem('venue', currentVenue);
-        let ws = null;
-        let fontSize = parseFloat(localStorage.getItem('fontSize')) || 1;
-        let isDarkMode = localStorage.getItem('theme') !== 'light';
-        let reconnectAttempts = 0;
-        let currentBlock = null;   // .caption-block card for the current talk/session
-        let currentTalk = null;    // title of the current talk, for change detection
-        let scrollAnimId = null;
-        let userScrolledUp = false;
-
-        // Elements
+        const venues = [...DEFAULT_VENUES];
         const venueTabsEl = document.getElementById('venueTabs');
-        const captionsEl = document.getElementById('captions');
+        const captionsViewport = document.getElementById('captions');
+        const captionsEl = document.getElementById('captionsInner');
         const emptyStateEl = document.getElementById('emptyState');
         const statusDotEl = document.getElementById('statusDot');
         const statusTextEl = document.getElementById('statusText');
 
-        // Load venues from API
-        async function loadVenues() {
-            try {
-                const response = await fetch('/api/venues');
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.length > 0) {
-                        venues = data.map(v => ({ id: v.id, name: v.name }));
-                    }
-                }
-            } catch (e) {
-                console.warn('Could not load venues from API, using defaults');
-            }
-            initVenues();
+        const state = {
+            ws: null,
+            reconnectAttempts: 0,
+            currentBlock: null,
+            currentTalk: null,
+            fontSize: parseFloat(localStorage.getItem('fontSize')) || 1,
+            isDarkMode: localStorage.getItem('theme') !== 'light',
+            userScrolledUp: false,
+        };
+
+        function venueFromPath() {
+            const match = location.pathname.match(/^\/v\/([^/]+)\/?$/);
+            return match ? decodeURIComponent(match[1]) : null;
         }
 
-        // Initialize venues
-        function initVenues() {
-            venueTabsEl.innerHTML = venues.map(v => `
-                <button class="venue-tab ${v.id === currentVenue ? 'active' : ''}"
-                        data-venue="${v.id}">
-                    ${escapeHtml(v.name)}
-                </button>
-            `).join('');
+        let currentVenue = venueFromPath() || localStorage.getItem('venue') || 'stage-a';
+        if (venueFromPath()) localStorage.setItem('venue', currentVenue);
 
-            venueTabsEl.addEventListener('click', (e) => {
-                if (e.target.classList.contains('venue-tab')) {
-                    selectVenue(e.target.dataset.venue);
-                }
-            });
-        }
-
-        function selectVenue(venueId, opts = {}) {
-            if (venueId === currentVenue) return;
-
-            currentVenue = venueId;
-            localStorage.setItem('venue', venueId);
-
-            // Update UI
-            document.querySelectorAll('.venue-tab').forEach(tab => {
-                tab.classList.toggle('active', tab.dataset.venue === venueId);
-            });
-
-            // Update URL — skip when called from popstate to avoid double history entry
-            if (!opts.skipPushState) {
-                const newPath = `/v/${encodeURIComponent(venueId)}`;
-                if (window.location.pathname !== newPath) {
-                    history.pushState({ venue: venueId }, '', newPath);
-                }
-            }
-
-            // Clear captions, load history, then open live stream
-            clearCaptions();
-            loadHistory().then(connect);
-        }
-
-        // Browser back/forward — sync venue with URL
-        window.addEventListener('popstate', () => {
-            const v = venueFromPath();
-            if (v && v !== currentVenue) selectVenue(v, { skipPushState: true });
-        });
-
-        function clearCaptions() {
-            captionsEl.innerHTML = '';
-            captionsEl.appendChild(emptyStateEl);
-            emptyStateEl.style.display = 'block';
-            document.getElementById('nowPlaying').style.display = 'none';
-            currentBlock = null;
-            currentTalk = null;
-            userScrolledUp = false;
-        }
-
-        function setStatus(dot, text) {
-            statusDotEl.className = 'status-dot ' + dot;
+        function setStatus(status, text) {
+            statusDotEl.className = `status-dot ${status}`;
             statusTextEl.textContent = text;
         }
 
-        function connect() {
-            if (ws) {
-                ws.onclose = null;
-                ws.close();
-            }
-
-            setStatus('reconnecting', 'Connecting...');
-
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/api/captions/stream/${currentVenue}`;
-
-            ws = new WebSocket(wsUrl);
-
-            ws.onopen = () => {
-                // Status will be set properly when 'connected' message arrives with is_live
-                reconnectAttempts = 0;
-            };
-
-            ws.onmessage = (event) => {
-                try {
-                    handleMessage(JSON.parse(event.data));
-                } catch (e) {
-                    console.error('Parse error:', e);
-                }
-            };
-
-            ws.onclose = () => {
-                setStatus('', 'Disconnected');
-                scheduleReconnect();
-            };
-
-            ws.onerror = console.error;
-        }
-
-        function scheduleReconnect() {
-            reconnectAttempts++;
-            const delay = Math.min(1000 * Math.pow(2, Math.min(reconnectAttempts - 1, 5)), 30000);
-            setTimeout(connect, delay);
-        }
-
-        function handleMessage(data) {
-            if (data.type === 'keepalive') return;
-
-            if (data.type === 'connected') {
-                setStatus(data.is_live ? 'live' : 'offline',
-                          data.is_live ? 'Connected · Live' : 'Connected · Offline');
-                return;
-            }
-
-            if (data.type === 'venue_live') {
-                setStatus('live', 'Connected · Live');
-                startNewBlock(currentTalk); // new audio session = new block
-                return;
-            }
-
-            if (data.type === 'venue_offline') {
-                setStatus('offline', 'Connected · Offline');
-                clearTentative();
-                return;
-            }
-
-            if (data.type === 'session_end') {
-                clearTentative();
-                return;
-            }
-
-            if (data.type === 'schedule_update') {
-                updateSchedule(data);
-                return;
-            }
-
-            emptyStateEl.style.display = 'none';
-
-            if (data.type === 'tentative')      updateTentative(data);
-            else if (data.type === 'committed') commitSegment(data);
-        }
-
-        // --- block management --------------------------------------------
-        // One block = one talk card. Committed text flows inline within it.
-        // New block on: talk title change, new audio session (venue_live).
-
-        function ensureBlock() {
-            if (currentBlock) return currentBlock;
-
-            const wrapper = document.createElement('div');
-            wrapper.className = 'caption-block';
-
-            if (currentTalk) {
-                const header = document.createElement('div');
-                header.className = 'block-header';
-                header.textContent = currentTalk;
-                wrapper.appendChild(header);
-            }
-
-            const textEl = document.createElement('p');
-            textEl.className = 'block-text';
-            wrapper.appendChild(textEl);
-
-            const timeEl = document.createElement('div');
-            timeEl.className = 'block-time';
-            timeEl.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            wrapper.appendChild(timeEl);
-
-            captionsEl.appendChild(wrapper);
-            currentBlock = wrapper;
-            trimBlocks();
-            return wrapper;
-        }
-
-        function startNewBlock(label) {
-            clearTentative();
-            currentBlock = null;
-        }
-
-        function clearTentative() {
-            if (!currentBlock) return;
-            const t = currentBlock.querySelector('.block-tentative');
-            if (t) t.remove();
-        }
-
-        function trimBlocks() {
-            const blocks = captionsEl.querySelectorAll('.caption-block');
-            while (blocks.length > 20) blocks[0].remove();
-        }
-
-        // --- caption rendering -------------------------------------------
-
-        function commitSegment(data) {
-            const block = ensureBlock();
-            const textEl = block.querySelector('.block-text');
-            clearTentative();
-            const sep = textEl.textContent.trim().length > 0 ? ' ' : '';
-            textEl.appendChild(document.createTextNode(sep + data.text));
-            scrollToBottom();
-        }
-
-        function updateTentative(data) {
-            const block = ensureBlock();
-            const textEl = block.querySelector('.block-text');
-            let t = textEl.querySelector('.block-tentative');
-            if (!t) {
-                t = document.createElement('span');
-                t.className = 'block-tentative';
-                textEl.appendChild(t);
-            }
-            t.textContent = (textEl.textContent.trim() ? ' ' : '') + data.text;
-            scrollToBottom();
-        }
-
-        function getScrollEl() {
-            const mainEl = document.querySelector('main');
-            return (mainEl && mainEl.scrollHeight > mainEl.clientHeight) ? mainEl : null;
-        }
-
-        function isNearBottom(threshold = 150) {
-            const el = getScrollEl();
-            if (el) return el.scrollHeight - el.scrollTop - el.clientHeight < threshold;
-            return document.documentElement.scrollHeight - window.scrollY - window.innerHeight < threshold;
-        }
-
-        // Buffer keeps scroll position away from the absolute bottom so tentative→committed
-        // shrinkage doesn't trigger a browser scroll-clamp (which causes visible jumps).
-        // Must be less than the CSS padding-bottom (10rem ≈ 160px).
-        const SCROLL_BUFFER = 80; // px
-
-        function scrollToBottom(instant = false) {
-            if (!instant && userScrolledUp) return;
-            if (scrollAnimId) { cancelAnimationFrame(scrollAnimId); scrollAnimId = null; }
-            const el = getScrollEl();
-            const getRawMax = () => el
-                ? el.scrollHeight - el.clientHeight
-                : document.documentElement.scrollHeight - window.innerHeight;
-            const getTarget = () => Math.max(0, getRawMax() - SCROLL_BUFFER);
-            const getPos = () => el ? el.scrollTop : window.scrollY;
-            const setPos = (p) => { if (el) el.scrollTop = p; else window.scrollTo(0, p); };
-            if (instant) { setPos(getTarget()); return; }
-            if (getTarget() - getPos() < 1) return;
-            let lastT = null;
-            function step(t) {
-                if (lastT === null) lastT = t;
-                const dt = Math.min((t - lastT) / 1000, 0.1);
-                lastT = t;
-                const gap = getTarget() - getPos();
-                if (gap < 1) { scrollAnimId = null; return; }
-                setPos(getPos() + gap * (1 - Math.exp(-dt / 0.4)));
-                scrollAnimId = requestAnimationFrame(step);
-            }
-            scrollAnimId = requestAnimationFrame(step);
-        }
-
-        function setupScrollListener() {
-            function onScroll() {
-                if (scrollAnimId) return; // ignore programmatic scrolls
-                userScrolledUp = !isNearBottom();
-            }
-            window.addEventListener('scroll', onScroll, { passive: true });
-            const mainEl = document.querySelector('main');
-            if (mainEl) mainEl.addEventListener('scroll', onScroll, { passive: true });
-        }
-
-        function updateSchedule(data) {
-            const nowEl = document.getElementById('nowPlaying');
-            if (!data.now || !data.now.title) {
-                nowEl.style.display = 'none';
-                return;
-            }
-            // New talk = new block
-            if (data.now.title !== currentTalk) {
-                currentTalk = data.now.title;
-                startNewBlock(currentTalk);
-            }
-            document.getElementById('nowTitle').textContent = data.now.title;
-            document.getElementById('nowSpeaker').textContent = data.now.speaker || '';
-            document.getElementById('nowTime').textContent =
-                data.now.start_time && data.now.end_time
-                    ? `${data.now.start_time} – ${data.now.end_time}`
-                    : '';
-            nowEl.style.display = 'block';
-
-            const nextTalkEl = document.getElementById('nextTalk');
-            if (data.next && data.next.title) {
-                document.getElementById('nextTitle').textContent = data.next.title;
-                document.getElementById('nextSpeaker').textContent = data.next.speaker || '';
-                document.getElementById('nextTime').textContent =
-                    data.next.start_time ? data.next.start_time : '';
-                nextTalkEl.style.display = 'block';
-            } else {
-                nextTalkEl.style.display = 'none';
-            }
+        function updateTheme() {
+            document.body.classList.toggle('light', !state.isDarkMode);
+            document.documentElement.style.setProperty('--caption-font-size', `${state.fontSize}rem`);
+            document.getElementById('themeToggle').textContent = state.isDarkMode ? '🌙' : '☀️';
         }
 
         function escapeHtml(text) {
@@ -735,62 +518,297 @@
             return div.innerHTML;
         }
 
-        // Font size controls
-        function updateFontSize(delta) {
-            fontSize = Math.max(0.75, Math.min(2, fontSize + delta));
-            localStorage.setItem('fontSize', fontSize);
-            document.documentElement.style.setProperty('--caption-font-size', `${fontSize}rem`);
+        async function fetchVenues() {
+            try {
+                const response = await fetch('/api/venues');
+                if (!response.ok) return;
+                const data = await response.json();
+                if (Array.isArray(data) && data.length > 0) {
+                    venues.length = 0;
+                    data.forEach(v => venues.push({ id: v.id, name: v.name }));
+                }
+            } catch {
+                console.warn('Using fallback venue list');
+            }
         }
 
-        document.getElementById('fontIncrease').addEventListener('click', () => updateFontSize(0.125));
-        document.getElementById('fontDecrease').addEventListener('click', () => updateFontSize(-0.125));
-
-        // Theme toggle
-        function toggleTheme() {
-            isDarkMode = !isDarkMode;
-            document.body.classList.toggle('light', !isDarkMode);
-            localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
-            document.getElementById('themeToggle').textContent = isDarkMode ? '\u{1F319}' : '\u2600\uFE0F';
+        function renderVenueTabs() {
+            venueTabsEl.innerHTML = venues.map(v => `
+                <button class="venue-tab ${v.id === currentVenue ? 'active' : ''}" data-venue="${v.id}">
+                    ${escapeHtml(v.name)}
+                </button>
+            `).join('');
         }
 
-        document.getElementById('themeToggle').addEventListener('click', toggleTheme);
+        function selectVenue(venueId, { skipPushState = false } = {}) {
+            if (venueId === currentVenue) return;
+            currentVenue = venueId;
+            localStorage.setItem('venue', venueId);
+            renderVenueTabs();
+            if (!skipPushState) {
+                history.pushState({ venue: venueId }, '', `/v/${encodeURIComponent(venueId)}`);
+            }
+            clearCaptions();
+            loadHistory().then(connect);
+        }
 
-        // --- history -----------------------------------------------------
+        venueTabsEl.addEventListener('click', event => {
+            const button = event.target.closest('.venue-tab');
+            if (button) selectVenue(button.dataset.venue);
+        });
+
+        window.addEventListener('popstate', () => {
+            const venueId = venueFromPath();
+            if (venueId && venueId !== currentVenue) selectVenue(venueId, { skipPushState: true });
+        });
+
+        function clearCaptions() {
+            captionsEl.innerHTML = '';
+            captionsEl.appendChild(emptyStateEl);
+            emptyStateEl.style.display = 'block';
+            document.getElementById('nowPlaying').style.display = 'none';
+            document.getElementById('jumpToBottomBtn').classList.add('hidden');
+            state.currentBlock = null;
+            state.currentTalk = null;
+            state.userScrolledUp = false;
+        }
+
+        function wsUrl() {
+            const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            return `${protocol}//${location.host}/api/captions/stream/${currentVenue}`;
+        }
+
+        function connect() {
+            if (state.ws) {
+                state.ws.onclose = null;
+                state.ws.close();
+            }
+            setStatus('reconnecting', 'Connecting...');
+            state.ws = new WebSocket(wsUrl());
+            state.ws.onopen = () => { state.reconnectAttempts = 0; };
+            state.ws.onmessage = event => handleMessage(JSON.parse(event.data));
+            state.ws.onclose = () => {
+                setStatus('', 'Disconnected');
+                scheduleReconnect();
+            };
+            state.ws.onerror = console.error;
+        }
+
+        function scheduleReconnect() {
+            state.reconnectAttempts += 1;
+            const delay = Math.min(1000 * 2 ** Math.min(state.reconnectAttempts - 1, 5), 30000);
+            setTimeout(connect, delay);
+        }
+
+        function handleMessage(data) {
+            if (data.type === 'keepalive') return;
+            if (data.type === 'connected') {
+                setStatus(data.is_live ? 'live' : 'offline', data.is_live ? 'Connected · Live' : 'Connected · Source Offline');
+                return;
+            }
+            if (data.type === 'venue_live') {
+                setStatus('live', 'Connected · Live');
+                state.currentBlock = null;
+                return;
+            }
+            if (data.type === 'venue_offline') {
+                setStatus('offline', 'Connected · Source Offline');
+                clearTentative();
+                return;
+            }
+            if (data.type === 'session_end') {
+                clearTentative();
+                return;
+            }
+            if (data.type === 'schedule_update') {
+                updateSchedule(data);
+                return;
+            }
+            emptyStateEl.style.display = 'none';
+            if (data.type === 'tentative') updateTentative(data);
+            else if (data.type === 'committed') commitSegment(data);
+        }
+
+        function createBlock() {
+            const block = document.createElement('div');
+            block.className = 'caption-block';
+            const text = document.createElement('p');
+            text.className = 'block-text';
+            block.appendChild(text);
+            captionsEl.appendChild(block);
+            state.currentBlock = block;
+            return block;
+        }
+
+        function ensureBlock() {
+            if (!state.currentBlock) createBlock();
+            return state.currentBlock;
+        }
+
+        function clearTentative() {
+            if (!state.currentBlock) return;
+            const tentative = state.currentBlock.querySelector('.block-tentative');
+            if (tentative) tentative.remove();
+        }
+
+        function trimContent() {
+            const block = state.currentBlock;
+            if (!block) return;
+            const textEl = block.querySelector('.block-text');
+            if (!textEl) return;
+            const text = textEl.textContent.trim();
+            const words = text.split(/\s+/).filter(Boolean);
+            if (words.length > 500) {
+                const trimmed = words.slice(-2000).join(' ');
+                textEl.textContent = trimmed;
+                const tentative = textEl.querySelector('.block-tentative');
+                if (tentative) tentative.remove();
+            }
+        }
+
+        function commitSegment(data) {
+            const block = ensureBlock();
+            clearTentative();
+            const textEl = block.querySelector('.block-text');
+            const prefix = textEl.textContent.trim() ? ' ' : '';
+            textEl.append(prefix + data.text);
+            trimContent();
+            updateViewerPosition();
+        }
+
+        function updateTentative(data) {
+            const block = ensureBlock();
+            const textEl = block.querySelector('.block-text');
+            let tentative = textEl.querySelector('.block-tentative');
+            if (!tentative) {
+                tentative = document.createElement('span');
+                tentative.className = 'block-tentative';
+                textEl.appendChild(tentative);
+            }
+            tentative.textContent = (textEl.textContent.trim() ? ' ' : '') + data.text;
+            updateViewerPosition();
+        }
+
+        function getScrollContainer() {
+            const mainEl = document.querySelector('main');
+            return mainEl && mainEl.scrollHeight > mainEl.clientHeight ? mainEl : document.documentElement;
+        }
+
+        function isNearBottom(threshold = 150) {
+            const scroller = getScrollContainer();
+            return scroller.scrollHeight - scroller.scrollTop - scroller.clientHeight < threshold;
+        }
+
+        function updateViewerPosition() {
+            if (!state.userScrolledUp) {
+                scrollToBottom();
+            }
+        }
+
+        function scrollToBottom(instant = false) {
+            const scroller = getScrollContainer();
+            const target = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+            if (instant) {
+                scroller.scrollTop = target;
+                return;
+            }
+            if (Math.abs(target - scroller.scrollTop) < 1) return;
+            scroller.scrollTo({ top: target, behavior: 'smooth' });
+        }
+
+        function setupScrollListener() {
+            const scroller = getScrollContainer();
+            const jumpBtn = document.getElementById('jumpToBottomBtn');
+            const onScroll = () => {
+                state.userScrolledUp = !isNearBottom();
+                if (state.userScrolledUp) {
+                    jumpBtn.classList.remove('hidden');
+                } else {
+                    jumpBtn.classList.add('hidden');
+                }
+            };
+            window.addEventListener('scroll', onScroll, { passive: true });
+            if (scroller !== document.documentElement) scroller.addEventListener('scroll', onScroll, { passive: true });
+            jumpBtn.addEventListener('click', () => {
+                state.userScrolledUp = false;
+                scrollToBottom();
+                jumpBtn.classList.add('hidden');
+            });
+        }
+
+        function updateSchedule(data) {
+            const nowPlaying = document.getElementById('nowPlaying');
+            const nextTalk = document.getElementById('nextTalk');
+            if (!data.now || !data.now.title) {
+                nowPlaying.style.display = 'none';
+                return;
+            }
+            state.currentTalk = data.now.title;
+            document.getElementById('nowTitle').textContent = data.now.title;
+            document.getElementById('nowSpeaker').textContent = data.now.speaker || '';
+            document.getElementById('nowTime').textContent = data.now.start_time && data.now.end_time ? `${data.now.start_time} – ${data.now.end_time}` : '';
+            if (data.next && data.next.title) {
+                document.getElementById('nextTitle').textContent = data.next.title;
+                document.getElementById('nextSpeaker').textContent = data.next.speaker || '';
+                document.getElementById('nextTime').textContent = data.next.start_time || '';
+                nextTalk.style.display = 'block';
+            } else {
+                nextTalk.style.display = 'none';
+            }
+            nowPlaying.style.display = 'block';
+        }
 
         async function loadHistory() {
-            // Load recent committed segments so the view isn't blank on connect.
-            // History flows into the initial block; live captions continue from there.
             try {
-                const res = await fetch(`/api/captions/history/${currentVenue}?limit=200`);
-                if (!res.ok) return;
-                const data = await res.json();
+                const response = await fetch(`/api/captions/history/${currentVenue}?limit=200`);
+                if (!response.ok) return;
+                const data = await response.json();
                 const segments = (data.segments || []).filter(s => s.text && s.text.trim());
-                if (segments.length === 0) return;
+                if (!segments.length) return;
                 emptyStateEl.style.display = 'none';
                 const block = ensureBlock();
                 const textEl = block.querySelector('.block-text');
-                textEl.appendChild(document.createTextNode(segments.map(s => s.text.trim()).join(' ')));
-                scrollToBottom(true); // jump instantly on initial load
-            } catch (e) {
-                console.error('History load failed:', e);
+                textEl.textContent = segments.map(s => s.text.trim()).join(' ');
+                updateViewerPosition();
+            } catch (error) {
+                console.error('History load failed:', error);
             }
         }
 
-        // Initialize
-        setupScrollListener();
-        loadVenues();
-        document.body.classList.toggle('light', !isDarkMode);
-        document.documentElement.style.setProperty('--caption-font-size', `${fontSize}rem`);
-        document.getElementById('themeToggle').textContent = isDarkMode ? '\u{1F319}' : '\u2600\uFE0F';
-        loadHistory().then(connect);
+        document.getElementById('fontIncrease').addEventListener('click', () => {
+            state.fontSize = Math.min(3.5, state.fontSize + 0.125);
+            localStorage.setItem('fontSize', state.fontSize);
+            updateTheme();
+        });
+        document.getElementById('fontDecrease').addEventListener('click', () => {
+            state.fontSize = Math.max(0.75, state.fontSize - 0.125);
+            localStorage.setItem('fontSize', state.fontSize);
+            updateTheme();
+        });
 
-        // Handle visibility
+        document.getElementById('themeToggle').addEventListener('click', () => {
+            state.isDarkMode = !state.isDarkMode;
+            localStorage.setItem('theme', state.isDarkMode ? 'dark' : 'light');
+            updateTheme();
+        });
+
+        async function init() {
+            await fetchVenues();
+            renderVenueTabs();
+            updateTheme();
+            setupScrollListener();
+            await loadHistory();
+            connect();
+        }
+
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible' && (!ws || ws.readyState !== WebSocket.OPEN)) {
-                reconnectAttempts = 0;
+            if (document.visibilityState === 'visible' && (!state.ws || state.ws.readyState !== WebSocket.OPEN)) {
+                state.reconnectAttempts = 0;
                 connect();
             }
         });
+
+        init();
     </script>
 </body>
 </html>

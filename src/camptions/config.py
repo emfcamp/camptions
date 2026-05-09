@@ -23,7 +23,7 @@ class Settings(BaseSettings):
 
     # WhisperLive sidecar — runs as a separate container.
     wl_url: str = "ws://wl:9090"
-    whisper_model: str = "small.en"
+    whisper_model: str = "medium.en"
     whisper_language: str = "en"
     whisper_use_vad: bool = False
     # Proactive WL reconnect interval in seconds. Must be less than the

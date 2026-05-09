@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -23,29 +24,36 @@
             --padding: 2rem;
         }
 
+        html,
         body {
-            background: var(--bg-color);
+            height: 100%;
+        }
+
+        body {
+            position: relative;
+            background-color: var(--bg-color);
             color: var(--text-color);
             font-family: 'Raleway', 'Trebuchet MS', 'Liberation Sans', 'Open Sans', sans-serif;
             font-weight: 400;
             font-size: var(--font-size);
             line-height: var(--line-height);
-            min-height: 100vh;
-            padding: var(--padding);
-            overflow-x: hidden;
-            overflow-y: auto;
-        }
-
-        /* High contrast mode — preserves brand orange where readable */
-        body.high-contrast {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
             --bg-color: #000000;
-            --text-color: #F9E200;
+            --text-color: #ffffff;
         }
 
-        /* Light mode */
-        body.light {
-            --bg-color: #ffffff;
-            --text-color: #000730;
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: url('/static/bg-3.png');
+            background-size: cover;
+            background-position: center;
+            opacity: 0.1;
+            pointer-events: none;
+            z-index: 0;
         }
 
         #brandMark {
@@ -101,23 +109,47 @@
         }
 
         @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0.5; }
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0.5;
+            }
         }
 
         #captions {
-            padding-top: 3rem;
-            padding-bottom: 20vw; /* must exceed the JS scroll buffer (15vw) */
+            position: absolute;
+            inset: 0;
+            overflow: hidden;
+            margin: 4rem;
         }
 
-        /* One block = one talk. Committed text flows inline; tentative appended at end. */
+        #captionsInner {
+            position: absolute;
+            inset: 0;
+            display: grid;
+            align-items: end;
+            min-height: 100%;
+            gap: 0.5rem;
+            pointer-events: none;
+            transition: transform 3s ease-out;
+            transform: translateY(0);
+            margin-bottom: 6rem;
+        }
+
+        #captionsInner>* {
+            pointer-events: auto;
+        }
+
         .caption-block {
             margin-bottom: 0.5em;
         }
 
         .block-tentative {
             opacity: var(--tentative-opacity);
-            font-style: italic;
         }
 
         .block-tentative::after {
@@ -126,8 +158,15 @@
         }
 
         @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50% { opacity: 0; }
+
+            0%,
+            100% {
+                opacity: 1;
+            }
+
+            50% {
+                opacity: 0;
+            }
         }
 
         /* Divider shown between talks when title is known */
@@ -207,6 +246,7 @@
         }
     </style>
 </head>
+
 <body>
     <div id="talkHeader" style="display:none">
         <span class="talk-now-label">Now</span>
@@ -215,224 +255,196 @@
         <span class="talk-next" id="talkNext"></span>
     </div>
     <div id="status" class="disconnected">Connecting...</div>
-    <div id="captions"></div>
+    <div id="captions" role="region" aria-live="polite" aria-label="Live captions">
+        <div id="captionsInner">
+            <div id="captionText"></div>
+        </div>
+    </div>
     <div id="brandMark" aria-hidden="true">
         <svg class="brand-emblem" viewBox="0 0 100 140" fill="none">
-            <line x1="50" y1="6" x2="50" y2="134" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
-            <circle cx="50" cy="70" r="20" stroke="currentColor" stroke-width="5" fill="none"/>
-            <path d="M37 70 Q43 60 50 70 T63 70" stroke="currentColor" stroke-width="4" fill="none" stroke-linecap="round"/>
-            <ellipse cx="50" cy="70" rx="34" ry="9" stroke="currentColor" stroke-width="5" fill="none" transform="rotate(-22 50 70)"/>
+            <line x1="50" y1="6" x2="50" y2="134" stroke="currentColor" stroke-width="5" stroke-linecap="round" />
+            <circle cx="50" cy="70" r="20" stroke="currentColor" stroke-width="5" fill="none" />
+            <path d="M37 70 Q43 60 50 70 T63 70" stroke="currentColor" stroke-width="4" fill="none"
+                stroke-linecap="round" />
+            <ellipse cx="50" cy="70" rx="34" ry="9" stroke="currentColor" stroke-width="5" fill="none"
+                transform="rotate(-22 50 70)" />
             <g fill="currentColor">
-                <path d="M28 22 L30 28 L36 30 L30 32 L28 38 L26 32 L20 30 L26 28 Z"/>
-                <path d="M40 12 L41 15 L44 16 L41 17 L40 20 L39 17 L36 16 L39 15 Z"/>
-                <path d="M22 38 L23 40 L25 41 L23 42 L22 44 L21 42 L19 41 L21 40 Z"/>
+                <path d="M28 22 L30 28 L36 30 L30 32 L28 38 L26 32 L20 30 L26 28 Z" />
+                <path d="M40 12 L41 15 L44 16 L41 17 L40 20 L39 17 L36 16 L39 15 Z" />
+                <path d="M22 38 L23 40 L25 41 L23 42 L22 44 L21 42 L19 41 L21 40 Z" />
             </g>
         </svg>
         <span>Electromagnetic Field <span class="brand-year">2026</span></span>
     </div>
 
     <script>
-        // Configuration: venue from URL path (/display/{id}), with legacy ?venue= fallback
-        const params = new URLSearchParams(window.location.search);
-        const pathMatch = window.location.pathname.match(/^\/display\/([^/]+)\/?$/);
-        const venue = (pathMatch ? decodeURIComponent(pathMatch[1]) : params.get('venue')) || 'stage-a';
+        const params = new URLSearchParams(location.search);
+        const pathMatch = location.pathname.match(/^\/display\/([^/]+)\/?$/);
+        const venue = pathMatch ? decodeURIComponent(pathMatch[1]) : params.get('venue') || 'stage-a';
         const mode = params.get('mode') || 'dark';
         const fontSize = params.get('fontSize');
-        const maxLines = parseInt(params.get('maxLines')) || 8;
 
         if (mode === 'light') document.body.classList.add('light');
         if (mode === 'high-contrast') document.body.classList.add('high-contrast');
         if (fontSize) document.documentElement.style.setProperty('--font-size', fontSize);
 
-        // Rolling word limit for the current block — prevents accumulation on long talks.
-        const MAX_WORDS = Math.max(maxLines * 12, 80);
+        const captionsEl = document.getElementById('captionText');
+        const captionsViewport = document.getElementById('captions');
+        const captionsContainer = document.getElementById('captionsInner');
+        const statusEl = document.getElementById('status');
+        const talkHeader = document.getElementById('talkHeader');
+        const talkTitleEl = document.getElementById('talkTitle');
+        const talkTimeEl = document.getElementById('talkTime');
+        const talkNextEl = document.getElementById('talkNext');
 
-        // State
         let ws = null;
         let reconnectAttempts = 0;
-        let currentBlock = null;      // <p class="caption-block"> for the current talk/session
+        let currentBlock = null;
         let currentTalkTitle = null;
-        let scrollAnimId = null;
+        let currentTranslate = 0;
 
-        const captionsEl = document.getElementById('captions');
-        const statusEl = document.getElementById('status');
-
-        // --- connection --------------------------------------------------
-
-        function setStatus(cls, text) {
-            statusEl.className = cls;
+        function setStatus(state, text) {
+            statusEl.className = state;
             statusEl.textContent = text;
         }
 
+        function wsUrl() {
+            const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
+            return `${scheme}//${location.host}/api/captions/stream/${venue}`;
+        }
+
         function connect() {
-            if (ws) { ws.onclose = null; ws.close(); }
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            if (ws) {
+                ws.onclose = null;
+                ws.close();
+            }
             setStatus('reconnecting', 'Connecting...');
-            ws = new WebSocket(`${protocol}//${window.location.host}/api/captions/stream/${venue}`);
+            ws = new WebSocket(wsUrl());
             ws.onopen = () => { reconnectAttempts = 0; };
-            ws.onmessage = (e) => { try { handleMessage(JSON.parse(e.data)); } catch (err) { console.error(err); } };
-            ws.onclose = () => { setStatus('disconnected', 'Disconnected'); scheduleReconnect(); };
+            ws.onmessage = event => { handleMessage(JSON.parse(event.data)); };
+            ws.onclose = () => {
+                setStatus('disconnected', 'Disconnected');
+                scheduleReconnect();
+            };
             ws.onerror = console.error;
         }
 
         function scheduleReconnect() {
-            reconnectAttempts++;
-            setTimeout(connect, Math.min(1000 * Math.pow(2, Math.min(reconnectAttempts - 1, 5)), 30000));
+            reconnectAttempts += 1;
+            const delay = Math.min(1000 * 2 ** Math.min(reconnectAttempts - 1, 5), 30000);
+            setTimeout(connect, delay);
         }
 
         function handleMessage(data) {
             if (data.type === 'keepalive') return;
             if (data.type === 'connected') {
-                setStatus(data.is_live ? 'live' : 'offline',
-                          data.is_live ? 'Connected · Live' : 'Connected · Offline');
+                setStatus(data.is_live ? 'live' : 'offline', data.is_live ? 'Connected · Live' : 'Connected · Source Offline');
                 return;
             }
-            if (data.type === 'venue_live')      { setStatus('live', 'Connected · Live'); return; }
-            if (data.type === 'venue_offline')   { setStatus('offline', 'Connected · Offline'); clearTentative(); return; }
-            if (data.type === 'session_end')     { clearTentative(); return; }
-            if (data.type === 'schedule_update') { updateSchedule(data); return; }
-            if (data.type === 'tentative')       updateTentative(data);
-            else if (data.type === 'committed')  commitSegment(data);
-        }
-
-        // --- block management --------------------------------------------
-        // One block = one continuous paragraph per talk/session.
-        // New block only when the talk title changes or a new session starts.
-
-        function ensureBlock() {
-            if (currentBlock) return currentBlock;
-            currentBlock = document.createElement('p');
-            currentBlock.className = 'caption-block';
-            captionsEl.appendChild(currentBlock);
-            return currentBlock;
-        }
-
-        function startNewBlock(label) {
-            clearTentative();
-            currentBlock = null;
-            if (label) {
-                const sep = document.createElement('div');
-                sep.className = 'block-separator';
-                sep.textContent = label;
-                captionsEl.appendChild(sep);
+            if (data.type === 'venue_live') {
+                setStatus('live', 'Connected · Live');
+                return;
             }
-            // Keep DOM lean — trim oldest blocks + separators
-            while (captionsEl.children.length > 6) captionsEl.firstChild.remove();
-        }
-
-        function clearTentative() {
-            if (!currentBlock) return;
-            const t = currentBlock.querySelector('.block-tentative');
-            if (t) t.remove();
-        }
-
-        function trimBlock(block) {
-            // Trim committed text nodes when the block grows too long.
-            // Leaves the tentative span intact.
-            const t = block.querySelector('.block-tentative');
-            let text = '';
-            for (const node of block.childNodes) {
-                if (node.nodeType === Node.TEXT_NODE) text += node.textContent;
+            if (data.type === 'venue_offline') {
+                setStatus('offline', 'Connected · Source Offline');
+                clearTentative();
+                return;
             }
-            const words = text.trim().split(/\s+/).filter(Boolean);
-            if (words.length <= MAX_WORDS) return;
-            block.textContent = words.slice(-MAX_WORDS).join(' ');
-            if (t) block.appendChild(t);
+            if (data.type === 'session_end') {
+                clearTentative();
+                return;
+            }
+            if (data.type === 'schedule_update') {
+                updateSchedule(data);
+                return;
+            }
+            if (data.type === 'tentative') {
+                updateTentative(data);
+                return;
+            }
+            if (data.type === 'committed') {
+                commitSegment(data);
+                return;
+            }
+            console.warn('Unhandled message type', data.type);
         }
-
-        // --- caption rendering -------------------------------------------
 
         function commitSegment(data) {
-            const block = ensureBlock();
             clearTentative();
-            const sep = block.textContent.trim().length > 0 ? ' ' : '';
-            block.appendChild(document.createTextNode(sep + data.text));
-            trimBlock(block);
-            scrollToBottom();
+            const prefix = captionsEl.textContent.trim() ? ' ' : '';
+            captionsEl.append(prefix + data.text);
+            trimContent();
+            updateDisplayPosition();
         }
 
         function updateTentative(data) {
-            const block = ensureBlock();
-            let t = block.querySelector('.block-tentative');
-            if (!t) {
-                t = document.createElement('span');
-                t.className = 'block-tentative';
-                block.appendChild(t);
+            const prefix = captionsEl.textContent.trim() ? ' ' : '';
+            let tentative = captionsEl.querySelector('.block-tentative');
+            if (!tentative) {
+                tentative = document.createElement('span');
+                tentative.className = 'block-tentative';
+                captionsEl.appendChild(tentative);
             }
-            t.textContent = (block.textContent.trim() ? ' ' : '') + data.text;
-            scrollToBottom();
+            tentative.textContent = prefix + data.text;
+            updateDisplayPosition();
         }
 
-        // --- schedule ----------------------------------------------------
+        function clearTentative() {
+            const tentative = captionsEl.querySelector('.block-tentative');
+            if (tentative) tentative.remove();
+        }
+
+        function trimContent() {
+            const text = captionsEl.textContent.trim();
+            const words = text.split(/\s+/).filter(Boolean);
+            if (words.length > 500) {
+                captionsEl.textContent = words.slice(-500).join(' ');
+            }
+        }
+
+
+        function updateDisplayPosition() {
+            const available = captionsViewport.clientHeight;
+            const contentHeight = captionsEl.scrollHeight;
+            const desired = Math.min(0, available - contentHeight - 200);
+            currentTranslate = Math.min(currentTranslate, desired);
+            captionsEl.style.transform = `translateY(${currentTranslate}px)`;
+        }
+
+        function scrollToBottom() {
+            // Display mode stays locked to the bottom via CSS, no browser scrollbar.
+        }
 
         function updateSchedule(data) {
-            const header = document.getElementById('talkHeader');
-            if (!data.now || !data.now.title) { header.style.display = 'none'; return; }
-            if (data.now.title !== currentTalkTitle) {
-                currentTalkTitle = data.now.title;
-                startNewBlock(data.now.title);
+            if (!data.now || !data.now.title) {
+                talkHeader.style.display = 'none';
+                currentTalkTitle = null;
+                return;
             }
-            document.getElementById('talkTitle').textContent = data.now.title;
-            document.getElementById('talkTime').textContent =
-                data.now.start_time && data.now.end_time
-                    ? `${data.now.start_time}–${data.now.end_time}` : '';
-            document.getElementById('talkNext').textContent =
-                data.next && data.next.title ? `Next: ${data.next.title}` : '';
-            header.style.display = 'flex';
-        }
-
-        function escapeHtml(text) {
-            const div = document.createElement('div');
-            div.textContent = text;
-            return div.innerHTML;
-        }
-
-        // Buffer keeps scrollY away from the absolute bottom, absorbing tentative→committed
-        // shrinkage without triggering a browser scroll-clamp (which causes visible jumps).
-        // Must be less than the CSS padding-bottom (20vw) so the last line stays visible.
-        const SCROLL_BUFFER = () => window.innerWidth * 0.15; // 15vw
-
-        function scrollToBottom(instant = false) {
-            if (scrollAnimId) { cancelAnimationFrame(scrollAnimId); scrollAnimId = null; }
-            const getTarget = () => Math.max(0,
-                document.documentElement.scrollHeight - window.innerHeight - SCROLL_BUFFER());
-            if (instant) { window.scrollTo(0, getTarget()); return; }
-            if (getTarget() - window.scrollY < 1) return;
-            let lastT = null;
-            function step(t) {
-                if (lastT === null) lastT = t;
-                const dt = Math.min((t - lastT) / 1000, 0.1);
-                lastT = t;
-                const target = getTarget();
-                const gap = target - window.scrollY;
-                if (gap < 1) { scrollAnimId = null; return; }
-                window.scrollTo(0, window.scrollY + gap * (1 - Math.exp(-dt / 0.4)));
-                scrollAnimId = requestAnimationFrame(step);
+            const newTitle = data.now.title;
+            if (newTitle !== currentTalkTitle) {
+                currentTalkTitle = newTitle;
             }
-            scrollAnimId = requestAnimationFrame(step);
+            talkTitleEl.textContent = newTitle;
+            talkTimeEl.textContent = data.now.start_time && data.now.end_time ? `${data.now.start_time}–${data.now.end_time}` : '';
+            talkNextEl.textContent = data.next && data.next.title ? `Next: ${data.next.title}` : '';
+            talkHeader.style.display = 'flex';
         }
-
-        // --- history -----------------------------------------------------
 
         async function loadHistory() {
-            // Load one screen's worth of history so the display isn't blank on reconnect.
-            // Segments are appended to the initial block; trimBlock limits to MAX_WORDS.
             try {
-                const res = await fetch(`/api/captions/history/${venue}?limit=50`);
-                if (!res.ok) return;
-                const data = await res.json();
+                const response = await fetch(`/api/captions/history/${venue}?limit=50`);
+                if (!response.ok) return;
+                const data = await response.json();
                 const segments = (data.segments || []).filter(s => s.text && s.text.trim());
-                if (segments.length === 0) return;
-                const block = ensureBlock();
-                block.appendChild(document.createTextNode(segments.map(s => s.text.trim()).join(' ')));
-                trimBlock(block);
-                scrollToBottom(true); // jump instantly on initial load
-            } catch (e) {
-                console.error('History load failed:', e);
+                if (!segments.length) return;
+                captionsEl.textContent = segments.map(s => s.text.trim()).join(' ');
+                trimContent();
+                updateDisplayPosition();
+            } catch (error) {
+                console.error('History load failed:', error);
             }
         }
-
-        // --- init --------------------------------------------------------
 
         loadHistory().then(connect);
 
@@ -449,4 +461,5 @@
         });
     </script>
 </body>
+
 </html>

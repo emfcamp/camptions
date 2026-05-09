@@ -23,6 +23,7 @@ services:
       - CAMPTIONS_WL_URL=ws://wl:9090
     volumes:
       - ./data:/app/data
+      - ./static:/app/static
     depends_on:
       - wl
     restart: unless-stopped
