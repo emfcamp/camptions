@@ -1,10 +1,14 @@
 services:
-  wlk:
-    build:
-      context: .
-      dockerfile: Dockerfile.wlk
+  wl:
+    image: ghcr.io/collabora/whisperlive-cpu:latest
+    command: >
+      python3 run_server.py
+        --port 9090
+        --raw_pcm_input
+        --max_clients 4
+        --max_connection_time 3600
     volumes:
-      - whisper-cache:/root/.cache/huggingface/hub
+      - whisper-cache:/root/.cache/whisper-live
     environment:
       - HF_TOKEN
     restart: unless-stopped
@@ -15,11 +19,11 @@ services:
       - "8000:8000"
     environment:
       - CAMPTIONS_DATABASE_URL=sqlite+aiosqlite:///./data/camptions.db
-      - CAMPTIONS_WLK_URL=ws://wlk:8000/asr
+      - CAMPTIONS_WL_URL=ws://wl:9090
     volumes:
       - ./data:/app/data
     depends_on:
-      - wlk
+      - wl
     restart: unless-stopped
 
 volumes:

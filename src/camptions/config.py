@@ -21,9 +21,14 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "sqlite+aiosqlite:///./camptions.db"
 
-    # WhisperLiveKit sidecar — runs as a separate container.
-    # Model, language, backend etc. are configured on the WLK container itself.
-    wlk_url: str = "ws://wlk:8000/asr"
+    # WhisperLive sidecar — runs as a separate container.
+    wl_url: str = "ws://wl:9090"
+    whisper_model: str = "small.en"
+    whisper_language: str = "en"
+    whisper_use_vad: bool = False
+    # Proactive WL reconnect interval in seconds. Must be less than the
+    # --max_connection_time set on the WL container (default 3600s).
+    wl_reconnect_interval: int = 3300
 
     # Venues
     default_venues: list[str] = ["stage-a", "stage-b", "stage-c"]

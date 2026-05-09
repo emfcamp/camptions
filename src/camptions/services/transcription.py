@@ -1,4 +1,4 @@
-"""Transcription service — bridges Pi audio to a WhisperLiveKit sidecar.
+"""Transcription service — bridges Pi audio to a WhisperLive sidecar.
 
 Per-venue lifecycle:
 
@@ -6,21 +6,29 @@ Per-venue lifecycle:
                                                   │
                                                   ▼
                                          _send_loop ── owns its
-                                                       reconnect to WLK
+                                                       reconnect to WL
                                                           │
                                                           ▼
-                                                 ┌───── WLK WS ─────┐
+                                                 ┌───── WL WS ─────┐
                                                           ▲
                                                           │
                                          _recv_loop ── owns its
-                                                       reconnect to WLK
+                                                       reconnect to WL
                                                           │
                                                           ▼
                                               distribution + DB
 
 Send and receive are fully decoupled. Each runs as a long-lived task that
-manages its own connection state. WLK going away does not end the session —
+manages its own connection state. WL going away does not end the session —
 audio keeps queueing, the loops reconnect, and transcription resumes.
+
+The send loop proactively reconnects every wl_reconnect_interval seconds (default
+55 min) to stay well under WL's max_connection_time hard cap. On each new WL
+connection, the last _RING_MAXCHUNKS of sent audio are replayed so Whisper has
+context for the current sentence before live audio resumes.
+
+committed_starts persists across WL reconnects (resets only on Pi disconnect)
+so ring-buffer replays don't re-emit segments already broadcast in this session.
 
 Session ends only when end_session() is called (Pi disconnect or shutdown).
 """
@@ -29,7 +37,9 @@ import asyncio
 import contextlib
 import json
 import logging
+import time
 import uuid
+from collections import deque
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Optional
@@ -44,29 +54,10 @@ from .distribution import distribution_manager
 
 log = logging.getLogger(__name__)
 
-# Pi captures at 16 kHz S16_LE mono via ALSA's plughw layer, which is
-# exactly what WLK wants in --pcm-input mode — no transcoding needed.
-_QUEUE_MAX = 200          # ~10 s of 100 ms chunks; drop on overflow
+_QUEUE_MAX = 600          # ~60 s of 100 ms chunks; drop on overflow
+_RING_MAXCHUNKS = 50      # ~5 s of audio replayed on each WL reconnect
 _RECONNECT_MAX_DELAY = 15
 _SHUTDOWN_TIMEOUT = 3.0
-
-
-def _parse_timestamp(value: Any) -> Optional[float]:
-    """WLK serialises segment times as 'H:MM:SS.cc' strings; convert to
-    float seconds. Already-numeric values pass through unchanged."""
-    if value is None:
-        return None
-    if isinstance(value, (int, float)):
-        return float(value)
-    if isinstance(value, str):
-        try:
-            seconds = 0.0
-            for part in value.split(":"):
-                seconds = seconds * 60 + float(part)
-            return seconds
-        except ValueError:
-            return None
-    return None
 
 
 @dataclass
@@ -79,31 +70,23 @@ class VenueSession:
     stop_event: asyncio.Event = field(default_factory=asyncio.Event)
     ws: Optional[Any] = None
     ws_lock: asyncio.Lock = field(default_factory=asyncio.Lock)
+    ws_opened_at: float = 0.0
     sequence: int = 0
-    # WLK sends snapshots: `lines` is the full accumulating list, where
-    # entries can mutate (text grows, end shifts) until a newer line
-    # appears past them. We track:
-    #   - committed_count: how many lines we've finalised. Lines below
-    #     this index are stable and have been broadcast as `committed`.
-    #   - last_tentative: the last `tentative` payload we sent, so we
-    #     don't spam identical updates. Tentative = text of lines[-1]
-    #     plus buffer_transcription.
-    # Both reset on every fresh WLK connection.
-    committed_count: int = 0
+    committed_starts: set = field(default_factory=set)
     last_tentative: str = ""
     send_task: Optional[asyncio.Task] = None
     recv_task: Optional[asyncio.Task] = None
 
 
 class TranscriptionManager:
-    """Per-venue WLK bridge with independent send/receive loops."""
+    """Per-venue WhisperLive bridge with independent send/receive loops."""
 
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.venues: dict[str, VenueSession] = {}
 
     async def start(self) -> None:
-        """No-op — WLK is external."""
+        pass
 
     async def stop(self) -> None:
         for venue_id in list(self.venues):
@@ -137,23 +120,14 @@ class TranscriptionManager:
 
         log.info("[%s] ending session %s", venue_id, venue.session_id)
 
-        # 1. Tell loops to stop. Sentinel wakes the sender if it's blocked
-        #    on an empty queue; stop_event aborts any reconnect backoff.
         venue.stop_event.set()
         with contextlib.suppress(asyncio.QueueFull):
             venue.audio_queue.put_nowait(None)
 
-        # 2. Wait for sender to drain its queue and emit b"" to WLK.
         await self._await_or_cancel(venue.send_task, "sender", venue.venue_id)
-
-        # 3. Sender is gone, so close the WS to unblock the receiver
-        #    (it might still be waiting on `async for raw in ws`).
         await self._close_ws(venue)
-
-        # 4. Wait for receiver.
         await self._await_or_cancel(venue.recv_task, "receiver", venue.venue_id)
 
-        # 5. Persist + announce.
         async with get_db_session() as db:
             await db.execute(
                 update(Session)
@@ -170,7 +144,6 @@ class TranscriptionManager:
         )
 
     async def process_audio(self, venue_id: str, audio: bytes) -> None:
-        """Enqueue an audio chunk for this venue. Non-blocking."""
         venue = self.venues.get(venue_id)
         if venue is None:
             raise ValueError(f"No active session for venue: {venue_id}")
@@ -189,11 +162,11 @@ class TranscriptionManager:
     # ─── connection management ─────────────────────────────────────────
 
     async def _ensure_ws(self, venue: VenueSession) -> Optional[Any]:
-        """Return a live WLK WebSocket, reconnecting if needed.
+        """Return a live WL WebSocket, reconnecting if needed.
 
-        Returns None if the venue is being shut down. Multiple callers may
-        invoke this concurrently; the lock serialises connection creation
-        so we only ever hold one socket per venue.
+        Sends the WhisperLive handshake JSON and waits for SERVER_READY before
+        returning so callers can start sending audio immediately. The lock
+        serialises connection creation so send and recv loops share one socket.
         """
         async with venue.ws_lock:
             if venue.ws is not None:
@@ -203,14 +176,14 @@ class TranscriptionManager:
             while not venue.stop_event.is_set():
                 try:
                     ws = await websockets.connect(
-                        self.settings.wlk_url,
+                        self.settings.wl_url,
                         max_size=None,
                         ping_interval=20,
                         open_timeout=10,
                     )
                 except Exception as e:
                     log.warning(
-                        "[%s] WLK unreachable (%s: %s); retrying in %ds",
+                        "[%s] WL unreachable (%s: %s); retrying in %ds",
                         venue.venue_id, type(e).__name__, e, delay,
                     )
                     if await self._sleep_or_stop(venue, delay):
@@ -218,16 +191,52 @@ class TranscriptionManager:
                     delay = min(delay * 2, _RECONNECT_MAX_DELAY)
                     continue
 
+                try:
+                    await ws.send(json.dumps({
+                        "uid": f"{venue.venue_id}-{venue.session_id}",
+                        "language": self.settings.whisper_language,
+                        "task": "transcribe",
+                        "model": self.settings.whisper_model,
+                        "use_vad": self.settings.whisper_use_vad,
+                        "send_last_n_segments": 10,
+                    }))
+                    await asyncio.wait_for(self._wait_for_ready(ws, venue.venue_id), timeout=30)
+                except Exception as e:
+                    log.warning("[%s] WL handshake failed (%s); retrying", venue.venue_id, e)
+                    with contextlib.suppress(Exception):
+                        await ws.close()
+                    if await self._sleep_or_stop(venue, delay):
+                        return None
+                    delay = min(delay * 2, _RECONNECT_MAX_DELAY)
+                    continue
+
                 venue.ws = ws
-                venue.committed_count = 0  # fresh WLK session has no history
+                venue.ws_opened_at = time.monotonic()
                 venue.last_tentative = ""
-                log.info("[%s] WLK connected at %s", venue.venue_id, self.settings.wlk_url)
+                log.info("[%s] WL connected", venue.venue_id)
                 return ws
 
-            return None
+        return None
+
+    async def _wait_for_ready(self, ws: Any, venue_id: str) -> None:
+        """Consume messages until SERVER_READY. Raises on WAIT/ERROR."""
+        async for raw in ws:
+            if isinstance(raw, bytes):
+                continue
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError:
+                continue
+            status = data.get("status")
+            if status == "WAIT":
+                raise RuntimeError(f"WL server full (wait {data.get('message', '?')} min)")
+            if status == "ERROR":
+                raise RuntimeError(f"WL error: {data.get('message')}")
+            if data.get("message") == "SERVER_READY":
+                log.info("[%s] WL SERVER_READY", venue_id)
+                return
 
     async def _drop_ws(self, venue: VenueSession, ws: Any) -> None:
-        """Mark the given socket as dead. Idempotent across send/recv races."""
         async with venue.ws_lock:
             if venue.ws is ws:
                 venue.ws = None
@@ -235,7 +244,6 @@ class TranscriptionManager:
                     await ws.close()
 
     async def _close_ws(self, venue: VenueSession) -> None:
-        """Force-close the current WS, regardless of identity."""
         async with venue.ws_lock:
             if venue.ws is not None:
                 ws, venue.ws = venue.ws, None
@@ -243,7 +251,6 @@ class TranscriptionManager:
                     await ws.close()
 
     async def _sleep_or_stop(self, venue: VenueSession, seconds: float) -> bool:
-        """Sleep, returning True if stop_event fires before timeout."""
         try:
             await asyncio.wait_for(venue.stop_event.wait(), timeout=seconds)
             return True
@@ -265,33 +272,59 @@ class TranscriptionManager:
 
     async def _send_loop(self, venue: VenueSession) -> None:
         chunks_total = 0
+        ring: deque[bytes] = deque(maxlen=_RING_MAXCHUNKS)
 
         while not venue.stop_event.is_set():
             ws = await self._ensure_ws(venue)
             if ws is None:
                 break
 
+            # Replay recent audio so Whisper has sentence context (empty on first connect)
+            ring_ok = True
+            for chunk in list(ring):
+                try:
+                    await ws.send(chunk)
+                except Exception:
+                    await self._drop_ws(venue, ws)
+                    ring_ok = False
+                    break
+            if not ring_ok:
+                continue
+
             try:
                 while not venue.stop_event.is_set():
-                    chunk = await venue.audio_queue.get()
-                    if chunk is None:
-                        await ws.send(b"")
+                    remaining = (venue.ws_opened_at + self.settings.wl_reconnect_interval
+                                 - time.monotonic())
+                    if remaining <= 0:
                         log.info(
-                            "[%s] sender: clean EOS after %d chunks",
-                            venue.venue_id, chunks_total,
+                            "[%s] proactive reconnect after %.0fs",
+                            venue.venue_id, self.settings.wl_reconnect_interval,
                         )
+                        await self._drop_ws(venue, ws)
+                        break
+
+                    try:
+                        chunk = await asyncio.wait_for(
+                            venue.audio_queue.get(),
+                            timeout=min(remaining, 30.0),
+                        )
+                    except asyncio.TimeoutError:
+                        continue
+
+                    if chunk is None:
+                        await ws.send("END_OF_AUDIO")
+                        log.info("[%s] sender: EOS after %d chunks", venue.venue_id, chunks_total)
                         return
 
                     await ws.send(chunk)
+                    ring.append(chunk)
                     chunks_total += 1
+
             except websockets.ConnectionClosed as e:
-                log.warning(
-                    "[%s] sender: WLK connection closed (%s); will reconnect",
-                    venue.venue_id, e,
-                )
+                log.warning("[%s] sender: WL closed (%s); reconnecting", venue.venue_id, e)
                 await self._drop_ws(venue, ws)
             except Exception:
-                log.exception("[%s] sender error; will reconnect", venue.venue_id)
+                log.exception("[%s] sender error; reconnecting", venue.venue_id)
                 await self._drop_ws(venue, ws)
                 if await self._sleep_or_stop(venue, 1):
                     break
@@ -316,32 +349,23 @@ class TranscriptionManager:
                     try:
                         data = json.loads(raw)
                     except json.JSONDecodeError:
-                        log.warning(
-                            "[%s] receiver: non-JSON: %r",
-                            venue.venue_id, raw[:120],
-                        )
+                        log.warning("[%s] non-JSON: %r", venue.venue_id, raw[:120])
                         continue
 
-                    mtype = data.get("type")
-                    if mtype == "config":
+                    if "status" in data or data.get("message") == "SERVER_READY":
                         continue
-                    if mtype == "ready_to_stop":
-                        log.info("[%s] receiver: WLK ready_to_stop", venue.venue_id)
-                        return  # session is shutting down
+                    if "segments" not in data:
+                        continue
 
                     await self._broadcast(venue, data)
 
-                # async for ended without an exception → server closed gracefully.
-                log.info("[%s] receiver: WS closed by WLK; reconnecting", venue.venue_id)
+                log.info("[%s] receiver: WS closed by WL; reconnecting", venue.venue_id)
                 await self._drop_ws(venue, ws)
             except websockets.ConnectionClosed as e:
-                log.warning(
-                    "[%s] receiver: WLK connection closed (%s); will reconnect",
-                    venue.venue_id, e,
-                )
+                log.warning("[%s] receiver: WL closed (%s); reconnecting", venue.venue_id, e)
                 await self._drop_ws(venue, ws)
             except Exception:
-                log.exception("[%s] receiver error; will reconnect", venue.venue_id)
+                log.exception("[%s] receiver error; reconnecting", venue.venue_id)
                 await self._drop_ws(venue, ws)
                 if await self._sleep_or_stop(venue, 1):
                     break
@@ -351,36 +375,27 @@ class TranscriptionManager:
     # ─── result fan-out ────────────────────────────────────────────────
 
     async def _broadcast(self, venue: VenueSession, data: dict) -> None:
-        """Emit committed/tentative captions from a WLK snapshot.
+        """Emit committed/tentative captions from a WhisperLive segment response.
 
-        WLK's `lines` is mutable: each entry's text and end-time can grow
-        between snapshots, until a newer line appears past it (silence
-        boundary, speaker change, punctuation). Strategy:
-
-          - Lines [0..N-1] are stable now that line[N] exists → broadcast
-            each as `committed` exactly once (then store in DB).
-          - Line [N] is still being refined. Its text plus any
-            `buffer_transcription` is the live tip → broadcast as
-            `tentative`, but only when it actually changes.
-          - With nothing in `lines`, just emit `buffer_transcription` as
-            tentative.
-
-        WLK reconnects reset `committed_count` and `last_tentative`, so
-        the new session starts the cycle over.
+        WL sends up to send_last_n_segments entries per message. Segments with
+        completed=true are stable; the last entry may be completed=false (tentative).
+        committed_starts deduplicates across WL reconnects so ring-buffer replays
+        don't re-emit segments already broadcast in this Pi session.
         """
+        segments = data.get("segments") or []
+        if not segments:
+            return
 
-        lines = data.get("lines") or []
-        print(lines)
-        buffer_text = (data.get("buffer_transcription") or "").strip()
-        last_idx = len(lines) - 1
-
-        # Commit any lines that are now superseded.
-        while venue.committed_count < last_idx:
-            seg = lines[venue.committed_count]
-            venue.committed_count += 1
+        for seg in segments:
+            if not seg.get("completed"):
+                continue
+            start = seg.get("start")
+            if start in venue.committed_starts:
+                continue
             text = (seg.get("text") or "").strip()
             if not text:
                 continue
+            venue.committed_starts.add(start)
             venue.sequence += 1
             segment = {
                 "id": str(uuid.uuid4()),
@@ -389,41 +404,34 @@ class TranscriptionManager:
                 "sequence": venue.sequence,
                 "type": "committed",
                 "text": text,
-                "start_time": _parse_timestamp(seg.get("start")),
-                "end_time": _parse_timestamp(seg.get("end")),
+                "start_time": start,
+                "end_time": seg.get("end"),
                 "timestamp": datetime.now(UTC).isoformat(),
             }
             log.info("[%s] committed: %r", venue.venue_id, text)
             await distribution_manager.broadcast(venue.venue_id, segment)
             await self._store(segment)
 
-        # Build the tentative tip = last line's text + buffer_transcription.
-        live_parts: list[str] = []
-        if last_idx >= 0:
-            live_text = (lines[last_idx].get("text") or "").strip()
-            if live_text:
-                live_parts.append(live_text)
-        if buffer_text:
-            live_parts.append(buffer_text)
-        live = " ".join(live_parts)
-
-        if live and live != venue.last_tentative:
-            venue.last_tentative = live
-            venue.sequence += 1
-            await distribution_manager.broadcast(
-                venue.venue_id,
-                {
-                    "id": str(uuid.uuid4()),
-                    "session_id": venue.session_id,
-                    "venue_id": venue.venue_id,
-                    "sequence": venue.sequence,
-                    "type": "tentative",
-                    "text": live,
-                    "start_time": None,
-                    "end_time": None,
-                    "timestamp": datetime.now(UTC).isoformat(),
-                },
-            )
+        last = segments[-1]
+        if not last.get("completed"):
+            text = (last.get("text") or "").strip()
+            if text and text != venue.last_tentative:
+                venue.last_tentative = text
+                venue.sequence += 1
+                await distribution_manager.broadcast(
+                    venue.venue_id,
+                    {
+                        "id": str(uuid.uuid4()),
+                        "session_id": venue.session_id,
+                        "venue_id": venue.venue_id,
+                        "sequence": venue.sequence,
+                        "type": "tentative",
+                        "text": text,
+                        "start_time": last.get("start"),
+                        "end_time": None,
+                        "timestamp": datetime.now(UTC).isoformat(),
+                    },
+                )
 
     async def _store(self, seg: dict) -> None:
         async with get_db_session() as db:
