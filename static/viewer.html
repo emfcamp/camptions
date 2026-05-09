@@ -174,48 +174,41 @@
             gap: 0.75rem;
         }
 
-        .caption-line {
+        /* One block per talk/session — text flows inline within it */
+        .caption-block {
             padding: 0.75rem;
             background: var(--surface-color);
             border-radius: 0.5rem;
+            border-left: 3px solid var(--success-color);
             animation: slideIn 0.2s ease-out;
         }
 
         @keyframes slideIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
+            from { opacity: 0; transform: translateY(10px); }
+            to   { opacity: 1; transform: translateY(0); }
         }
 
-        .caption-line.tentative {
-            opacity: 0.7;
-            border-left: 3px solid var(--warning-color);
-        }
-
-        .caption-line.committed {
-            border-left: 3px solid var(--success-color);
-        }
-
-        .speaker-name {
-            font-size: 0.75rem;
+        .block-header {
+            font-size: 0.7rem;
             color: var(--accent-color);
-            margin-bottom: 0.25rem;
-            font-weight: 600;
+            font-weight: 700;
             text-transform: uppercase;
             letter-spacing: 0.05em;
+            margin-bottom: 0.35rem;
         }
 
-        .caption-text {
+        .block-text {
             font-size: var(--caption-font-size, 1rem);
             line-height: 1.5;
         }
 
-        .caption-time {
+        /* In-progress text shown inline at the end of the block */
+        .block-tentative {
+            opacity: 0.6;
+            font-style: italic;
+        }
+
+        .block-time {
             font-size: 0.7rem;
             color: var(--text-muted);
             margin-top: 0.25rem;
@@ -416,7 +409,8 @@
         let fontSize = parseFloat(localStorage.getItem('fontSize')) || 1;
         let isDarkMode = localStorage.getItem('theme') !== 'light';
         let reconnectAttempts = 0;
-        const maxCaptions = 50;
+        let currentBlock = null;   // .caption-block card for the current talk/session
+        let currentTalk = null;    // title of the current talk, for change detection
 
         // Elements
         const venueTabsEl = document.getElementById('venueTabs');
@@ -492,6 +486,8 @@
             captionsEl.appendChild(emptyStateEl);
             emptyStateEl.style.display = 'block';
             document.getElementById('nowPlaying').style.display = 'none';
+            currentBlock = null;
+            currentTalk = null;
         }
 
         function setStatus(dot, text) {
@@ -550,11 +546,18 @@
 
             if (data.type === 'venue_live') {
                 setStatus('live', 'Connected · Live');
+                startNewBlock(currentTalk); // new audio session = new block
                 return;
             }
 
             if (data.type === 'venue_offline') {
                 setStatus('offline', 'Connected · Offline');
+                clearTentative();
+                return;
+            }
+
+            if (data.type === 'session_end') {
+                clearTentative();
                 return;
             }
 
@@ -565,72 +568,80 @@
 
             emptyStateEl.style.display = 'none';
 
-            if (data.type === 'tentative') {
-                updateTentative(data);
-            } else if (data.type === 'committed') {
-                commitSegment(data);
-            } else if (data.type === 'session_end') {
-                return; // status already updated via venue_offline
+            if (data.type === 'tentative')      updateTentative(data);
+            else if (data.type === 'committed') commitSegment(data);
+        }
+
+        // --- block management --------------------------------------------
+        // One block = one talk card. Committed text flows inline within it.
+        // New block on: talk title change, new audio session (venue_live).
+
+        function ensureBlock() {
+            if (currentBlock) return currentBlock;
+
+            const wrapper = document.createElement('div');
+            wrapper.className = 'caption-block';
+
+            if (currentTalk) {
+                const header = document.createElement('div');
+                header.className = 'block-header';
+                header.textContent = currentTalk;
+                wrapper.appendChild(header);
             }
+
+            const textEl = document.createElement('p');
+            textEl.className = 'block-text';
+            wrapper.appendChild(textEl);
+
+            const timeEl = document.createElement('div');
+            timeEl.className = 'block-time';
+            timeEl.textContent = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+            wrapper.appendChild(timeEl);
+
+            captionsEl.appendChild(wrapper);
+            currentBlock = wrapper;
+            trimBlocks();
+            return wrapper;
+        }
+
+        function startNewBlock(label) {
+            clearTentative();
+            currentBlock = null;
+        }
+
+        function clearTentative() {
+            if (!currentBlock) return;
+            const t = currentBlock.querySelector('.block-tentative');
+            if (t) t.remove();
+        }
+
+        function trimBlocks() {
+            const blocks = captionsEl.querySelectorAll('.caption-block');
+            while (blocks.length > 20) blocks[0].remove();
+        }
+
+        // --- caption rendering -------------------------------------------
+
+        function commitSegment(data) {
+            const block = ensureBlock();
+            const textEl = block.querySelector('.block-text');
+            clearTentative();
+            const sep = textEl.textContent.trim().length > 0 ? ' ' : '';
+            textEl.appendChild(document.createTextNode(sep + data.text));
+            scrollToBottom();
         }
 
         function updateTentative(data) {
-            let el = document.getElementById('tentative-segment');
-            if (!el) {
-                el = createCaptionElement(data, 'tentative');
-                el.id = 'tentative-segment';
-                captionsEl.appendChild(el);
-            } else {
-                el.querySelector('.caption-text').textContent = data.text;
+            const block = ensureBlock();
+            const textEl = block.querySelector('.block-text');
+            let t = textEl.querySelector('.block-tentative');
+            if (!t) {
+                t = document.createElement('span');
+                t.className = 'block-tentative';
+                textEl.appendChild(t);
             }
+            t.textContent = (textEl.textContent.trim() ? ' ' : '') + data.text;
             scrollToBottom();
-        }
-
-        function commitSegment(data) {
-            const tentative = document.getElementById('tentative-segment');
-            if (tentative) tentative.remove();
-
-            const el = createCaptionElement(data, 'committed');
-            captionsEl.appendChild(el);
-
-            trimCaptions();
-            scrollToBottom();
-        }
-
-        function createCaptionElement(data, type) {
-            const el = document.createElement('div');
-            el.className = `caption-line ${type}`;
-
-            const time = new Date().toLocaleTimeString([], {
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-
-            el.innerHTML = `
-                ${data.speaker ? `<div class="speaker-name">${escapeHtml(data.speaker)}</div>` : ''}
-                <div class="caption-text">${escapeHtml(data.text)}</div>
-                <div class="caption-time">${time}</div>
-            `;
-
-            return el;
-        }
-
-        function addSystemMessage(text) {
-            const el = document.createElement('div');
-            el.className = 'caption-line';
-            el.style.opacity = '0.5';
-            el.style.textAlign = 'center';
-            el.style.borderLeft = 'none';
-            el.innerHTML = `<div class="caption-text">\u2014 ${escapeHtml(text)} \u2014</div>`;
-            captionsEl.appendChild(el);
-            scrollToBottom();
-        }
-
-        function trimCaptions() {
-            const lines = captionsEl.querySelectorAll('.caption-line');
-            while (lines.length > maxCaptions) {
-                lines[0].remove();
-            }
         }
 
         function scrollToBottom() {
@@ -642,6 +653,11 @@
             if (!data.now || !data.now.title) {
                 nowEl.style.display = 'none';
                 return;
+            }
+            // New talk = new block
+            if (data.now.title !== currentTalk) {
+                currentTalk = data.now.title;
+                startNewBlock(currentTalk);
             }
             document.getElementById('nowTitle').textContent = data.now.title;
             document.getElementById('nowSpeaker').textContent = data.now.speaker || '';

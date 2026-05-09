@@ -113,40 +113,34 @@
             padding-top: 3rem; /* space for talk header when visible */
         }
 
-        .caption-line {
+        /* One block = one talk. Committed text flows inline; tentative appended at end. */
+        .caption-block {
             margin-bottom: 0.5em;
-            animation: fadeIn 0.3s ease-out;
         }
 
-        @keyframes fadeIn {
-            from {
-                opacity: 0;
-                transform: translateY(10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .tentative {
+        .block-tentative {
             opacity: var(--tentative-opacity);
             font-style: italic;
         }
 
-        .committed {
-            opacity: 1;
-        }
-
-        /* Cursor for ongoing speech */
-        .tentative::after {
-            content: '...';
+        .block-tentative::after {
+            content: ' \25ae';
             animation: blink 1s infinite;
         }
 
         @keyframes blink {
             0%, 100% { opacity: 1; }
             50% { opacity: 0; }
+        }
+
+        /* Divider shown between talks when title is known */
+        .block-separator {
+            font-size: 0.38em;
+            opacity: 0.35;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            margin: 0.8em 0 0.2em;
         }
 
         /* Talk header bar */
@@ -241,7 +235,7 @@
     </div>
 
     <script>
-        // Configuration: venue comes from URL path (/display/{id}), with legacy ?venue= as fallback
+        // Configuration: venue from URL path (/display/{id}), with legacy ?venue= fallback
         const params = new URLSearchParams(window.location.search);
         const pathMatch = window.location.pathname.match(/^\/display\/([^/]+)\/?$/);
         const venue = (pathMatch ? decodeURIComponent(pathMatch[1]) : params.get('venue')) || 'stage-a';
@@ -249,21 +243,23 @@
         const fontSize = params.get('fontSize');
         const maxLines = parseInt(params.get('maxLines')) || 8;
 
-        // Apply mode
         if (mode === 'light') document.body.classList.add('light');
         if (mode === 'high-contrast') document.body.classList.add('high-contrast');
         if (fontSize) document.documentElement.style.setProperty('--font-size', fontSize);
 
+        // Rolling word limit for the current block — prevents accumulation on long talks.
+        const MAX_WORDS = Math.max(maxLines * 12, 80);
+
         // State
         let ws = null;
         let reconnectAttempts = 0;
-        const baseReconnectDelay = 1000;
-
-        // Track current tentative segment for updates
-        let currentTentativeId = null;
+        let currentBlock = null;      // <p class="caption-block"> for the current talk/session
+        let currentTalkTitle = null;
 
         const captionsEl = document.getElementById('captions');
         const statusEl = document.getElementById('status');
+
+        // --- connection --------------------------------------------------
 
         function setStatus(cls, text) {
             statusEl.className = cls;
@@ -271,171 +267,117 @@
         }
 
         function connect() {
-            if (ws) {
-                ws.onclose = null;
-                ws.close();
-            }
-
+            if (ws) { ws.onclose = null; ws.close(); }
             const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `${protocol}//${window.location.host}/api/captions/stream/${venue}`;
-
             setStatus('reconnecting', 'Connecting...');
-
-            ws = new WebSocket(wsUrl);
-
-            ws.onopen = () => {
-                reconnectAttempts = 0;
-            };
-
-            ws.onmessage = (event) => {
-                try {
-                    handleMessage(JSON.parse(event.data));
-                } catch (e) {
-                    console.error('Failed to parse message:', e);
-                }
-            };
-
-            ws.onclose = () => {
-                setStatus('disconnected', 'Disconnected');
-                scheduleReconnect();
-            };
-
-            ws.onerror = (error) => {
-                console.error('WebSocket error:', error);
-            };
+            ws = new WebSocket(`${protocol}//${window.location.host}/api/captions/stream/${venue}`);
+            ws.onopen = () => { reconnectAttempts = 0; };
+            ws.onmessage = (e) => { try { handleMessage(JSON.parse(e.data)); } catch (err) { console.error(err); } };
+            ws.onclose = () => { setStatus('disconnected', 'Disconnected'); scheduleReconnect(); };
+            ws.onerror = console.error;
         }
 
         function scheduleReconnect() {
             reconnectAttempts++;
-            const delay = Math.min(
-                baseReconnectDelay * Math.pow(2, Math.min(reconnectAttempts - 1, 5)),
-                30000
-            );
-            setTimeout(connect, delay);
+            setTimeout(connect, Math.min(1000 * Math.pow(2, Math.min(reconnectAttempts - 1, 5)), 30000));
         }
 
         function handleMessage(data) {
             if (data.type === 'keepalive') return;
-
             if (data.type === 'connected') {
                 setStatus(data.is_live ? 'live' : 'offline',
                           data.is_live ? 'Connected · Live' : 'Connected · Offline');
                 return;
             }
+            if (data.type === 'venue_live')      { setStatus('live', 'Connected · Live'); return; }
+            if (data.type === 'venue_offline')   { setStatus('offline', 'Connected · Offline'); clearTentative(); return; }
+            if (data.type === 'session_end')     { clearTentative(); return; }
+            if (data.type === 'schedule_update') { updateSchedule(data); return; }
+            if (data.type === 'tentative')       updateTentative(data);
+            else if (data.type === 'committed')  commitSegment(data);
+        }
 
-            if (data.type === 'venue_live') {
-                setStatus('live', 'Connected · Live');
-                return;
-            }
+        // --- block management --------------------------------------------
+        // One block = one continuous paragraph per talk/session.
+        // New block only when the talk title changes or a new session starts.
 
-            if (data.type === 'venue_offline') {
-                setStatus('offline', 'Connected · Offline');
-                return;
-            }
+        function ensureBlock() {
+            if (currentBlock) return currentBlock;
+            currentBlock = document.createElement('p');
+            currentBlock.className = 'caption-block';
+            captionsEl.appendChild(currentBlock);
+            return currentBlock;
+        }
 
-            switch (data.type) {
-                case 'tentative':
-                    updateTentative(data);
-                    break;
-                case 'committed':
-                    commitSegment(data);
-                    break;
-                case 'final':
-                    finishUtterance(data);
-                    break;
-                case 'schedule_update':
-                    updateSchedule(data);
-                    break;
-                case 'session_end':
-                    break; // handled by venue_offline
-                default:
-                    console.log('Unknown message type:', data.type);
+        function startNewBlock(label) {
+            clearTentative();
+            currentBlock = null;
+            if (label) {
+                const sep = document.createElement('div');
+                sep.className = 'block-separator';
+                sep.textContent = label;
+                captionsEl.appendChild(sep);
             }
+            // Keep DOM lean — trim oldest blocks + separators
+            while (captionsEl.children.length > 6) captionsEl.firstChild.remove();
+        }
+
+        function clearTentative() {
+            if (!currentBlock) return;
+            const t = currentBlock.querySelector('.block-tentative');
+            if (t) t.remove();
+        }
+
+        function trimBlock(block) {
+            // Trim committed text nodes when the block grows too long.
+            // Leaves the tentative span intact.
+            const t = block.querySelector('.block-tentative');
+            let text = '';
+            for (const node of block.childNodes) {
+                if (node.nodeType === Node.TEXT_NODE) text += node.textContent;
+            }
+            const words = text.trim().split(/\s+/).filter(Boolean);
+            if (words.length <= MAX_WORDS) return;
+            block.textContent = words.slice(-MAX_WORDS).join(' ');
+            if (t) block.appendChild(t);
+        }
+
+        // --- caption rendering -------------------------------------------
+
+        function commitSegment(data) {
+            const block = ensureBlock();
+            clearTentative();
+            const sep = block.textContent.trim().length > 0 ? ' ' : '';
+            block.appendChild(document.createTextNode(sep + data.text));
+            trimBlock(block);
+            scrollToBottom();
         }
 
         function updateTentative(data) {
-            let el = document.getElementById('tentative-segment');
-
-            if (!el) {
-                el = document.createElement('div');
-                el.id = 'tentative-segment';
-                el.className = 'caption-line tentative';
-                captionsEl.appendChild(el);
+            const block = ensureBlock();
+            let t = block.querySelector('.block-tentative');
+            if (!t) {
+                t = document.createElement('span');
+                t.className = 'block-tentative';
+                block.appendChild(t);
             }
-
-            el.innerHTML = formatSegment(data);
-            currentTentativeId = data.id;
+            t.textContent = (block.textContent.trim() ? ' ' : '') + data.text;
             scrollToBottom();
         }
 
-        function commitSegment(data) {
-            // Remove tentative if it matches
-            const tentativeEl = document.getElementById('tentative-segment');
-            if (tentativeEl) {
-                tentativeEl.remove();
-            }
-
-            // Add committed segment
-            const el = document.createElement('div');
-            el.className = 'caption-line committed';
-            el.dataset.id = data.id;
-            el.innerHTML = formatSegment(data);
-            captionsEl.appendChild(el);
-
-            // Trim old lines
-            trimLines();
-            scrollToBottom();
-        }
-
-        function finishUtterance(data) {
-            const tentativeEl = document.getElementById('tentative-segment');
-            if (tentativeEl) {
-                tentativeEl.remove();
-            }
-        }
-
-        function formatSegment(data) {
-            let html = '';
-
-            html += escapeHtml(data.text);
-
-            return html;
-        }
-
-        function addSystemMessage(text) {
-            const el = document.createElement('div');
-            el.className = 'caption-line system';
-            el.style.opacity = '0.5';
-            el.style.fontSize = '0.7em';
-            el.textContent = `\u2014 ${text} \u2014`;
-            captionsEl.appendChild(el);
-            scrollToBottom();
-        }
-
-        function trimLines() {
-            while (captionsEl.children.length > maxLines) {
-                captionsEl.removeChild(captionsEl.firstChild);
-            }
-        }
-
-        function scrollToBottom() {
-            // The captions container is taller than the viewport once enough
-            // lines have accumulated; scroll the window itself.
-            window.scrollTo(0, document.documentElement.scrollHeight);
-        }
+        // --- schedule ----------------------------------------------------
 
         function updateSchedule(data) {
             const header = document.getElementById('talkHeader');
-            if (!data.now || !data.now.title) {
-                header.style.display = 'none';
-                return;
+            if (!data.now || !data.now.title) { header.style.display = 'none'; return; }
+            if (data.now.title !== currentTalkTitle) {
+                currentTalkTitle = data.now.title;
+                startNewBlock(data.now.title);
             }
             document.getElementById('talkTitle').textContent = data.now.title;
-            document.getElementById('talkSpeaker').textContent = data.now.speaker || '';
             document.getElementById('talkTime').textContent =
                 data.now.start_time && data.now.end_time
-                    ? `${data.now.start_time}–${data.now.end_time}`
-                    : '';
+                    ? `${data.now.start_time}–${data.now.end_time}` : '';
             document.getElementById('talkNext').textContent =
                 data.next && data.next.title ? `Next: ${data.next.title}` : '';
             header.style.display = 'flex';
@@ -447,10 +389,14 @@
             return div.innerHTML;
         }
 
-        // Start connection
+        function scrollToBottom() {
+            window.scrollTo(0, document.documentElement.scrollHeight);
+        }
+
+        // --- init --------------------------------------------------------
+
         connect();
 
-        // Handle visibility changes (reconnect when tab becomes visible)
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && (!ws || ws.readyState !== WebSocket.OPEN)) {
                 reconnectAttempts = 0;
@@ -458,13 +404,9 @@
             }
         });
 
-        // Fullscreen on click (useful for kiosk setup)
         document.body.addEventListener('dblclick', () => {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen();
-            } else {
-                document.exitFullscreen();
-            }
+            if (!document.fullscreenElement) document.documentElement.requestFullscreen();
+            else document.exitFullscreen();
         });
     </script>
 </body>
