@@ -142,7 +142,6 @@ async def get_caption_history(
             {
                 "id": s.id,
                 "text": s.text,
-                "speaker": s.speaker,
                 "start_time": s.start_time,
                 "end_time": s.end_time,
                 "created_at": s.created_at.isoformat() if s.created_at else None,

@@ -56,7 +56,6 @@ class SegmentBase(BaseModel):
     """Base schema for segment data."""
 
     text: str
-    speaker: Optional[str] = None
     start_time: float
     end_time: Optional[float] = None
 
@@ -90,7 +89,6 @@ class SegmentBroadcast(BaseModel):
     sequence: int
     type: Literal["tentative", "committed", "final"]
     text: str
-    speaker: Optional[str] = None
     start_time: Optional[float] = None
     end_time: Optional[float] = None
     timestamp: str

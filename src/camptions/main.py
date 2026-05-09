@@ -1,5 +1,6 @@
 """FastAPI application entry point."""
 
+import logging
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -14,6 +15,11 @@ from .routers import admin, audio, captions, venues
 from .routers import schedule as schedule_router
 from .services.schedule import schedule_service
 from .services.transcription import TranscriptionManager
+
+logging.basicConfig(
+    level=logging.DEBUG if settings.debug else logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+)
 
 # Path to static files — resolve relative to source tree or working directory (Docker)
 _src_relative = Path(__file__).parent.parent.parent / "static"

@@ -17,7 +17,6 @@
         :root {
             --bg-color: #000000;
             --text-color: #ffffff;
-            --speaker-color: #F77F02;
             --tentative-opacity: 0.6;
             --font-size: 4vw;
             --line-height: 1.4;
@@ -33,21 +32,20 @@
             line-height: var(--line-height);
             min-height: 100vh;
             padding: var(--padding);
-            overflow: hidden;
+            overflow-x: hidden;
+            overflow-y: auto;
         }
 
         /* High contrast mode — preserves brand orange where readable */
         body.high-contrast {
             --bg-color: #000000;
             --text-color: #F9E200;
-            --speaker-color: #2EADD9;
         }
 
         /* Light mode */
         body.light {
             --bg-color: #ffffff;
             --text-color: #000730;
-            --speaker-color: #F77F02;
         }
 
         #brandMark {
@@ -68,10 +66,6 @@
         #brandMark .brand-emblem {
             width: 1.6rem;
             height: 1.6rem;
-        }
-
-        #brandMark .brand-year {
-            color: var(--speaker-color);
         }
 
         #status {
@@ -135,11 +129,6 @@
             }
         }
 
-        .speaker {
-            color: var(--speaker-color);
-            font-weight: 600;
-        }
-
         .tentative {
             opacity: var(--tentative-opacity);
             font-style: italic;
@@ -151,7 +140,7 @@
 
         /* Cursor for ongoing speech */
         .tentative::after {
-            content: '\u258B';
+            content: '...';
             animation: blink 1s infinite;
         }
 
@@ -198,12 +187,6 @@
             text-overflow: ellipsis;
         }
 
-        .talk-speaker {
-            opacity: 0.65;
-            white-space: nowrap;
-            flex-shrink: 0;
-        }
-
         .talk-time {
             opacity: 0.5;
             white-space: nowrap;
@@ -237,7 +220,6 @@
     <div id="talkHeader" style="display:none">
         <span class="talk-now-label">Now</span>
         <span class="talk-title" id="talkTitle"></span>
-        <span class="talk-speaker" id="talkSpeaker"></span>
         <span class="talk-time" id="talkTime"></span>
         <span class="talk-next" id="talkNext"></span>
     </div>
@@ -406,7 +388,6 @@
         }
 
         function finishUtterance(data) {
-            // Mark end of speaker turn - could add visual separator
             const tentativeEl = document.getElementById('tentative-segment');
             if (tentativeEl) {
                 tentativeEl.remove();
@@ -415,10 +396,6 @@
 
         function formatSegment(data) {
             let html = '';
-
-            if (data.speaker) {
-                html += `<span class="speaker">[${escapeHtml(data.speaker)}]</span> `;
-            }
 
             html += escapeHtml(data.text);
 
@@ -442,7 +419,9 @@
         }
 
         function scrollToBottom() {
-            captionsEl.scrollTop = captionsEl.scrollHeight;
+            // The captions container is taller than the viewport once enough
+            // lines have accumulated; scroll the window itself.
+            window.scrollTo(0, document.documentElement.scrollHeight);
         }
 
         function updateSchedule(data) {

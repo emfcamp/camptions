@@ -6,7 +6,7 @@ WORKDIR /app
 # Stub src/ lets pip resolve all external deps without the real source.
 COPY pyproject.toml .
 RUN mkdir -p src/camptions && touch src/camptions/__init__.py \
-    && pip install --no-cache-dir ".[gpu]" \
+    && pip install --no-cache-dir . \
     && rm -rf src/
 
 # Copy source — only these layers re-run on src/ changes.

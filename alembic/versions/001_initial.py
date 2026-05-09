@@ -46,7 +46,6 @@ def upgrade() -> None:
         sa.Column("sequence", sa.Integer, nullable=False),
         sa.Column("segment_type", sa.String(20), nullable=False),
         sa.Column("text", sa.Text, nullable=False),
-        sa.Column("speaker", sa.String(50)),
         sa.Column("start_time", sa.Float, nullable=False),
         sa.Column("end_time", sa.Float),
         sa.Column("created_at", sa.DateTime),

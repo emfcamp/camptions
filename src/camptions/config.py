@@ -1,7 +1,5 @@
 """Configuration management using Pydantic Settings."""
 
-from typing import Literal
-
 from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 
@@ -23,13 +21,9 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "sqlite+aiosqlite:///./camptions.db"
 
-    # WhisperLiveKit
-    whisper_model: str = "small"
-    whisper_language: str = "en"
-    whisper_backend: Literal["auto", "faster-whisper", "whisper"] = "auto"
-    whisper_backend_policy: Literal["simulstreaming", "localagreement"] = "simulstreaming"
-    enable_diarization: bool = False
-    enable_vad: bool = True
+    # WhisperLiveKit sidecar — runs as a separate container.
+    # Model, language, backend etc. are configured on the WLK container itself.
+    wlk_url: str = "ws://wlk:8000/asr"
 
     # Venues
     default_venues: list[str] = ["stage-a", "stage-b", "stage-c"]

@@ -1,16 +1,25 @@
 services:
+  wlk:
+    build:
+      context: .
+      dockerfile: Dockerfile.wlk
+    volumes:
+      - whisper-cache:/root/.cache/huggingface/hub
+    environment:
+      - HF_TOKEN
+    restart: unless-stopped
+
   camptions:
     build: .
     ports:
       - "8000:8000"
     environment:
       - CAMPTIONS_DATABASE_URL=sqlite+aiosqlite:///./data/camptions.db
-      - CAMPTIONS_WHISPER_MODEL=small
-      - CAMPTIONS_WHISPER_LANGUAGE=en
-      - HF_TKN_FILE=./token
+      - CAMPTIONS_WLK_URL=ws://wlk:8000/asr
     volumes:
       - ./data:/app/data
-      - whisper-cache:/root/.cache/huggingface/hub
+    depends_on:
+      - wlk
     restart: unless-stopped
 
 volumes:

@@ -2,10 +2,13 @@
 
 import asyncio
 import json
+import logging
 from dataclasses import dataclass, field
 from typing import Any
 
 from fastapi import WebSocket
+
+log = logging.getLogger(__name__)
 
 
 @dataclass
@@ -56,30 +59,29 @@ class DistributionManager:
 
     async def broadcast(self, venue_id: str, message: dict[str, Any]) -> None:
         """Broadcast a message to all subscribers of a venue."""
-        if venue_id not in self.venues:
+        subs = self.venues.get(venue_id)
+        if subs is None or (not subs.websockets and not subs.sse_queues):
             return
 
         dead_sockets: set[WebSocket] = set()
         message_json = json.dumps(message)
 
-        # Broadcast to WebSocket clients
-        for websocket in self.venues[venue_id].websockets:
+        for websocket in subs.websockets:
             try:
                 await websocket.send_text(message_json)
-            except Exception:
+            except Exception as e:
+                log.warning("[%s] dist: send failed (%s); dropping subscriber", venue_id, e)
                 dead_sockets.add(websocket)
 
-        # Broadcast to SSE clients
-        for queue in self.venues[venue_id].sse_queues:
+        for queue in subs.sse_queues:
             try:
                 queue.put_nowait(message)
             except asyncio.QueueFull:
-                pass
+                log.warning("[%s] dist: SSE queue full; dropping message", venue_id)
 
-        # Cleanup dead WebSocket connections
         if dead_sockets:
             async with self._lock:
-                self.venues[venue_id].websockets -= dead_sockets
+                subs.websockets -= dead_sockets
 
     def get_subscriber_count(self, venue_id: str) -> int:
         """Get total subscriber count for a venue."""

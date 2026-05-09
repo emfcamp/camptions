@@ -52,7 +52,6 @@ class Segment(Base):
     sequence = Column(Integer, nullable=False)
     segment_type = Column(String(20), nullable=False)  # tentative, committed, final
     text = Column(Text, nullable=False)
-    speaker = Column(String(50))
     start_time = Column(Float, nullable=False)
     end_time = Column(Float)
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
