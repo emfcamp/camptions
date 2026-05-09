@@ -111,6 +111,7 @@
             justify-content: flex-end;
             min-height: calc(100vh - 4rem);
             padding-top: 3rem; /* space for talk header when visible */
+            padding-bottom: 3em; /* room for next incoming line */
         }
 
         /* One block = one talk. Committed text flows inline; tentative appended at end. */
@@ -389,13 +390,36 @@
             return div.innerHTML;
         }
 
-        function scrollToBottom() {
-            window.scrollTo(0, document.documentElement.scrollHeight);
+        function scrollToBottom(instant = false) {
+            window.scrollTo({
+                top: document.documentElement.scrollHeight,
+                behavior: instant ? 'instant' : 'smooth',
+            });
+        }
+
+        // --- history -----------------------------------------------------
+
+        async function loadHistory() {
+            // Load one screen's worth of history so the display isn't blank on reconnect.
+            // Segments are appended to the initial block; trimBlock limits to MAX_WORDS.
+            try {
+                const res = await fetch(`/api/captions/history/${venue}?limit=50`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const segments = (data.segments || []).filter(s => s.text && s.text.trim());
+                if (segments.length === 0) return;
+                const block = ensureBlock();
+                block.appendChild(document.createTextNode(segments.map(s => s.text.trim()).join(' ')));
+                trimBlock(block);
+                scrollToBottom(true); // jump instantly on initial load
+            } catch (e) {
+                console.error('History load failed:', e);
+            }
         }
 
         // --- init --------------------------------------------------------
 
-        connect();
+        loadHistory().then(connect);
 
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && (!ws || ws.readyState !== WebSocket.OPEN)) {

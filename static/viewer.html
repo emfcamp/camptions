@@ -165,6 +165,7 @@
         main {
             flex: 1;
             padding: 1rem;
+            padding-bottom: 5rem; /* room for next incoming line */
             overflow-y: auto;
         }
 
@@ -204,8 +205,7 @@
 
         /* In-progress text shown inline at the end of the block */
         .block-tentative {
-            opacity: 0.6;
-            font-style: italic;
+            opacity: 0.5;
         }
 
         .block-time {
@@ -470,9 +470,9 @@
                 }
             }
 
-            // Clear captions and reconnect
+            // Clear captions, load history, then open live stream
             clearCaptions();
-            connect();
+            loadHistory().then(connect);
         }
 
         // Browser back/forward — sync venue with URL
@@ -644,8 +644,12 @@
             scrollToBottom();
         }
 
-        function scrollToBottom() {
-            window.scrollTo(0, document.body.scrollHeight);
+        function scrollToBottom(instant = false) {
+            const behavior = instant ? 'instant' : 'smooth';
+            // main clips content on desktop; window scrolls on mobile — cover both
+            const mainEl = document.querySelector('main');
+            if (mainEl) mainEl.scrollTo({ top: mainEl.scrollHeight, behavior });
+            window.scrollTo({ top: document.documentElement.scrollHeight, behavior });
         }
 
         function updateSchedule(data) {
@@ -705,12 +709,33 @@
 
         document.getElementById('themeToggle').addEventListener('click', toggleTheme);
 
+        // --- history -----------------------------------------------------
+
+        async function loadHistory() {
+            // Load recent committed segments so the view isn't blank on connect.
+            // History flows into the initial block; live captions continue from there.
+            try {
+                const res = await fetch(`/api/captions/history/${currentVenue}?limit=200`);
+                if (!res.ok) return;
+                const data = await res.json();
+                const segments = (data.segments || []).filter(s => s.text && s.text.trim());
+                if (segments.length === 0) return;
+                emptyStateEl.style.display = 'none';
+                const block = ensureBlock();
+                const textEl = block.querySelector('.block-text');
+                textEl.appendChild(document.createTextNode(segments.map(s => s.text.trim()).join(' ')));
+                scrollToBottom(true); // jump instantly on initial load
+            } catch (e) {
+                console.error('History load failed:', e);
+            }
+        }
+
         // Initialize
         loadVenues();
         document.body.classList.toggle('light', !isDarkMode);
         document.documentElement.style.setProperty('--caption-font-size', `${fontSize}rem`);
         document.getElementById('themeToggle').textContent = isDarkMode ? '\u{1F319}' : '\u2600\uFE0F';
-        connect();
+        loadHistory().then(connect);
 
         // Handle visibility
         document.addEventListener('visibilitychange', () => {
