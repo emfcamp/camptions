@@ -76,6 +76,14 @@
             height: 1.6rem;
         }
 
+        #qrCode {
+            position: fixed;
+            bottom: 1rem;
+            right: 1rem;
+            z-index: 90;
+            opacity: 0.8;
+        }
+
         #status {
             position: fixed;
             top: 1rem;
@@ -276,13 +284,27 @@
         </svg>
         <span>Electromagnetic Field <span class="brand-year">2026</span></span>
     </div>
+    <div id="qrCode" aria-hidden="true"></div>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
     <script>
         const params = new URLSearchParams(location.search);
         const pathMatch = location.pathname.match(/^\/display\/([^/]+)\/?$/);
         const venue = pathMatch ? decodeURIComponent(pathMatch[1]) : params.get('venue') || 'stage-a';
         const mode = params.get('mode') || 'dark';
         const fontSize = params.get('fontSize');
+
+        const qrUrl = `https://captions.emf.camp/v/${encodeURIComponent(venue)}`;
+        console.log('QR URL:', qrUrl);
+        new QRCode(document.getElementById('qrCode'), {
+            text: qrUrl,
+            width: 128,
+            height: 128,
+            colorDark: '#ffffff',
+            colorLight: '#000000',
+            correctLevel: QRCode.CorrectLevel.L
+        });
+
 
         if (mode === 'light') document.body.classList.add('light');
         if (mode === 'high-contrast') document.body.classList.add('high-contrast');

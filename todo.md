@@ -1,2 +1,3 @@
+- viewer smooth scrolling and bottom button
 - authentication (admin and streaming connections)
 - does this work at scale? i.e. 1000 connections
