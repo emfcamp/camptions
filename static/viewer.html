@@ -491,6 +491,8 @@
             fontSize: parseFloat(localStorage.getItem('fontSize')) || 1,
             isDarkMode: localStorage.getItem('theme') !== 'light',
             userScrolledUp: false,
+            segments: [],  // Array of committed segments
+            displayedBlocks: [],  // Array of DOM elements for displayed segments
         };
 
         function venueFromPath() {
@@ -609,6 +611,11 @@
             if (data.type === 'venue_live') {
                 setStatus('live', 'Connected · Live');
                 state.currentBlock = null;
+                state.segments = [];
+                state.displayedBlocks.forEach(block => {
+                    if (block.parentNode) block.parentNode.removeChild(block);
+                });
+                state.displayedBlocks = [];
                 return;
             }
             if (data.type === 'venue_offline') {
@@ -618,15 +625,53 @@
             }
             if (data.type === 'session_end') {
                 clearTentative();
+                state.segments = [];
+                state.displayedBlocks.forEach(block => {
+                    if (block.parentNode) block.parentNode.removeChild(block);
+                });
+                state.displayedBlocks = [];
                 return;
             }
             if (data.type === 'schedule_update') {
                 updateSchedule(data);
                 return;
             }
+            if (data.type === 'prune_segments') {
+                // Remove the first data.count blocks
+                for (let i = 0; i < data.count && state.displayedBlocks.length > 0; i++) {
+                    const block = state.displayedBlocks.shift();
+                    if (block.parentNode) {
+                        block.parentNode.removeChild(block);
+                    }
+                }
+                updateViewerPosition();
+                return;
+            }
             emptyStateEl.style.display = 'none';
             if (data.type === 'tentative') updateTentative(data);
-            else if (data.type === 'committed') commitSegment(data);
+            else if (data.type === 'committed') {
+                state.segments.push(data);
+                // Finalize tentative into the current block
+                const block = ensureBlock();
+                clearTentative();
+                const textEl = block.querySelector('.block-text');
+                const prefix = textEl.textContent.trim() ? ' ' : '';
+                textEl.append(prefix + data.text);
+                // If this block is not already in displayedBlocks, add it
+                if (!state.displayedBlocks.includes(block)) {
+                    state.displayedBlocks.push(block);
+                }
+                state.currentBlock = null;  // Reset for next tentative
+                // If more than 10 blocks, remove oldest
+                if (state.displayedBlocks.length > 10) {
+                    const oldBlock = state.displayedBlocks.shift();
+                    if (oldBlock.parentNode) {
+                        oldBlock.parentNode.removeChild(oldBlock);
+                    }
+                    state.segments.shift();
+                }
+                updateViewerPosition();
+            }
         }
 
         function createBlock() {
@@ -641,6 +686,9 @@
         }
 
         function ensureBlock() {
+            if (state.displayedBlocks.length > 0) {
+                return state.displayedBlocks[state.displayedBlocks.length - 1];
+            }
             if (!state.currentBlock) createBlock();
             return state.currentBlock;
         }
@@ -667,13 +715,7 @@
         }
 
         function commitSegment(data) {
-            const block = ensureBlock();
-            clearTentative();
-            const textEl = block.querySelector('.block-text');
-            const prefix = textEl.textContent.trim() ? ' ' : '';
-            textEl.append(prefix + data.text);
-            trimContent();
-            updateViewerPosition();
+            // Legacy function, now handled in handleMessage
         }
 
         function updateTentative(data) {

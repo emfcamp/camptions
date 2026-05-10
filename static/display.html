@@ -324,6 +324,7 @@
         let currentBlock = null;
         let currentTalkTitle = null;
         let currentTranslate = 0;
+        let segments = [];  // Array of committed segments
 
         function setStatus(state, text) {
             statusEl.className = state;
@@ -365,6 +366,8 @@
             }
             if (data.type === 'venue_live') {
                 setStatus('live', 'Connected · Live');
+                segments = [];
+                updateCaptionDisplay();
                 return;
             }
             if (data.type === 'venue_offline') {
@@ -374,10 +377,17 @@
             }
             if (data.type === 'session_end') {
                 clearTentative();
+                segments = [];
+                updateCaptionDisplay();
                 return;
             }
             if (data.type === 'schedule_update') {
                 updateSchedule(data);
+                return;
+            }
+            if (data.type === 'prune_segments') {
+                segments.splice(0, data.count);
+                updateCaptionDisplay();
                 return;
             }
             if (data.type === 'tentative') {
@@ -385,18 +395,24 @@
                 return;
             }
             if (data.type === 'committed') {
-                commitSegment(data);
+                segments.push(data);
+                updateCaptionDisplay();
                 return;
             }
             console.warn('Unhandled message type', data.type);
         }
 
-        function commitSegment(data) {
+        function updateCaptionDisplay() {
             clearTentative();
-            const prefix = captionsEl.textContent.trim() ? ' ' : '';
-            captionsEl.append(prefix + data.text);
+            captionsEl.textContent = segments.map(s => s.text).join(' ');
             trimContent();
             updateDisplayPosition();
+        }
+
+        function commitSegment(data) {
+            // Legacy function, now handled by updateCaptionDisplay
+            segments.push(data);
+            updateCaptionDisplay();
         }
 
         function updateTentative(data) {
