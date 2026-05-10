@@ -87,8 +87,373 @@ class VenueSession:
     # Both reset on every fresh WLK connection (snapshot).
     lines: list[dict] = field(default_factory=list)
     last_tentative: str = ""
-    send_task: Optional[asyncio.Task] = None
-    recv_task: Optional[asyncio.Task] = None
+    streamer: Optional["AudioStreamer"] = None
+    processor: Optional["TranscriptionProcessor"] = None
+
+
+class AudioStreamer:
+    """Handles sending audio to WLK and managing send connection."""
+
+    def __init__(self, venue: VenueSession, settings: Settings) -> None:
+        self.venue = venue
+        self.settings = settings
+
+    async def start(self) -> None:
+        self.venue.send_task = asyncio.create_task(self._send_loop(), name=f"send:{self.venue.venue_id}")
+
+    async def stop(self) -> None:
+        if self.venue.send_task:
+            await self._await_or_cancel(self.venue.send_task, "sender", self.venue.venue_id)
+
+    async def _ensure_ws(self) -> Optional[Any]:
+        async with self.venue.ws_lock:
+            if self.venue.ws is not None:
+                return self.venue.ws
+
+            delay = 1
+            while not self.venue.stop_event.is_set():
+                try:
+                    ws = await websockets.connect(
+                        self.settings.wlk_url + "?mode=diff",
+                        max_size=None,
+                        ping_interval=20,
+                        open_timeout=10,
+                    )
+                except Exception as e:
+                    log.warning(
+                        "[%s] WLK unreachable (%s: %s); retrying in %ds",
+                        self.venue.venue_id, type(e).__name__, e, delay,
+                    )
+                    if await self._sleep_or_stop(delay):
+                        return None
+                    delay = min(delay * 2, _RECONNECT_MAX_DELAY)
+                    continue
+
+                self.venue.ws = ws
+                self.venue.lines.clear()
+                self.venue.last_tentative = ""
+                log.info("[%s] WLK connected at %s", self.venue.venue_id, self.settings.wlk_url)
+                return ws
+
+            return None
+
+    async def _drop_ws(self, ws: Any) -> None:
+        async with self.venue.ws_lock:
+            if self.venue.ws is ws:
+                self.venue.ws = None
+                with contextlib.suppress(Exception):
+                    await ws.close()
+
+    async def _sleep_or_stop(self, seconds: float) -> bool:
+        try:
+            await asyncio.wait_for(self.venue.stop_event.wait(), timeout=seconds)
+            return True
+        except asyncio.TimeoutError:
+            return False
+
+    async def _await_or_cancel(self, task: Optional[asyncio.Task], label: str, vid: str) -> None:
+        if task is None or task.done():
+            return
+        try:
+            await asyncio.wait_for(task, timeout=_SHUTDOWN_TIMEOUT)
+        except asyncio.TimeoutError:
+            log.warning("[%s] %s didn't exit cleanly, cancelling", vid, label)
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await task
+
+    async def _send_loop(self) -> None:
+        chunks_total = 0
+
+        while not self.venue.stop_event.is_set():
+            ws = await self._ensure_ws()
+            if ws is None:
+                break
+
+            try:
+                while not self.venue.stop_event.is_set():
+                    chunk = await self.venue.audio_queue.get()
+                    if chunk is None:
+                        await ws.send(b"")
+                        log.info(
+                            "[%s] sender: clean EOS after %d chunks",
+                            self.venue.venue_id, chunks_total,
+                        )
+                        return
+
+                    await ws.send(chunk)
+                    chunks_total += 1
+            except websockets.ConnectionClosed as e:
+                log.warning(
+                    "[%s] sender: WLK connection closed (%s); will reconnect",
+                    self.venue.venue_id, e,
+                )
+                await self._drop_ws(ws)
+            except Exception:
+                log.exception("[%s] sender error; will reconnect", self.venue.venue_id)
+                await self._drop_ws(ws)
+                if await self._sleep_or_stop(1):
+                    break
+
+        log.info("[%s] sender exiting after %d chunks", self.venue.venue_id, chunks_total)
+
+
+class TranscriptionProcessor:
+    """Handles receiving and processing transcription responses from WLK."""
+
+    def __init__(self, venue: VenueSession, settings: Settings) -> None:
+        self.venue = venue
+        self.settings = settings
+
+    async def start(self) -> None:
+        self.venue.recv_task = asyncio.create_task(self._recv_loop(), name=f"recv:{self.venue.venue_id}")
+
+    async def stop(self) -> None:
+        if self.venue.recv_task:
+            await self._await_or_cancel(self.venue.recv_task, "receiver", self.venue.venue_id)
+
+    async def _ensure_ws(self) -> Optional[Any]:
+        async with self.venue.ws_lock:
+            if self.venue.ws is not None:
+                return self.venue.ws
+
+            delay = 1
+            while not self.venue.stop_event.is_set():
+                try:
+                    ws = await websockets.connect(
+                        self.settings.wlk_url + "?mode=diff",
+                        max_size=None,
+                        ping_interval=20,
+                        open_timeout=10,
+                    )
+                except Exception as e:
+                    log.warning(
+                        "[%s] WLK unreachable (%s: %s); retrying in %ds",
+                        self.venue.venue_id, type(e).__name__, e, delay,
+                    )
+                    if await self._sleep_or_stop(delay):
+                        return None
+                    delay = min(delay * 2, _RECONNECT_MAX_DELAY)
+                    continue
+
+                self.venue.ws = ws
+                self.venue.lines.clear()
+                self.venue.last_tentative = ""
+                log.info("[%s] WLK connected at %s", self.venue.venue_id, self.settings.wlk_url)
+                return ws
+
+            return None
+
+    async def _drop_ws(self, ws: Any) -> None:
+        async with self.venue.ws_lock:
+            if self.venue.ws is ws:
+                self.venue.ws = None
+                with contextlib.suppress(Exception):
+                    await ws.close()
+
+    async def _close_ws(self) -> None:
+        async with self.venue.ws_lock:
+            if self.venue.ws is not None:
+                ws, self.venue.ws = self.venue.ws, None
+                with contextlib.suppress(Exception):
+                    await ws.close()
+
+    async def _sleep_or_stop(self, seconds: float) -> bool:
+        try:
+            await asyncio.wait_for(self.venue.stop_event.wait(), timeout=seconds)
+            return True
+        except asyncio.TimeoutError:
+            return False
+
+    async def _await_or_cancel(self, task: Optional[asyncio.Task], label: str, vid: str) -> None:
+        if task is None or task.done():
+            return
+        try:
+            await asyncio.wait_for(task, timeout=_SHUTDOWN_TIMEOUT)
+        except asyncio.TimeoutError:
+            log.warning("[%s] %s didn't exit cleanly, cancelling", vid, label)
+            task.cancel()
+            with contextlib.suppress(asyncio.CancelledError, Exception):
+                await task
+
+    async def _recv_loop(self) -> None:
+        msg_total = 0
+
+        while not self.venue.stop_event.is_set():
+            ws = await self._ensure_ws()
+            if ws is None:
+                break
+
+            try:
+                async for raw in ws:
+                    msg_total += 1
+                    if isinstance(raw, bytes):
+                        continue
+                    try:
+                        data = json.loads(raw)
+                    except json.JSONDecodeError:
+                        log.warning(
+                            "[%s] receiver: non-JSON: %r",
+                            self.venue.venue_id, raw[:120],
+                        )
+                        continue
+
+                    mtype = data.get("type")
+                    if mtype == "config":
+                        continue
+                    if mtype == "ready_to_stop":
+                        log.info("[%s] receiver: WLK ready_to_stop", self.venue.venue_id)
+                        return  # session is shutting down
+
+                    await self._broadcast(data)
+
+                # async for ended without an exception → server closed gracefully.
+                log.info("[%s] receiver: WS closed by WLK; reconnecting", self.venue.venue_id)
+                await self._drop_ws(ws)
+            except websockets.ConnectionClosed as e:
+                log.warning(
+                    "[%s] receiver: WLK connection closed (%s); will reconnect",
+                    self.venue.venue_id, e,
+                )
+                await self._drop_ws(ws)
+            except Exception:
+                log.exception("[%s] receiver error; will reconnect", self.venue.venue_id)
+                await self._drop_ws(ws)
+                if await self._sleep_or_stop(1):
+                    break
+
+        log.info("[%s] receiver exiting after %d messages", self.venue.venue_id, msg_total)
+
+    async def _broadcast(self, data: dict) -> None:
+        """Process snapshot or diff messages from WLK diff mode.
+
+        Snapshot: initializes lines state. Diff: applies pruning
+        (broadcasting removal) and new lines (broadcasting additions).
+        buffer_transcription is always broadcast as tentative.
+        """
+
+        msg_type = data.get("type")
+
+        # Handle snapshot: reset state with full lines list, assign sequences
+        if msg_type == "snapshot":
+            lines_data = data.get("lines") or []
+            self.venue.lines = []
+            for i, line in enumerate(lines_data):
+                text = (line.get("text") or "").strip()
+                if not text:
+                    continue
+                line_dict = {"sequence": i + 1, **line}
+                self.venue.lines.append(line_dict)
+                segment = {
+                    "id": str(uuid.uuid4()),
+                    "session_id": self.venue.session_id,
+                    "venue_id": self.venue.venue_id,
+                    "sequence": line_dict["sequence"],
+                    "type": "committed",
+                    "text": text,
+                    "start_time": _parse_timestamp(line.get("start")),
+                    "end_time": _parse_timestamp(line.get("end")),
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+                await distribution_manager.broadcast(self.venue.venue_id, segment)
+                await self._store(segment)
+            self.venue.last_tentative = ""
+            log.info(
+                "[%s] snapshot: %d lines, buffer=%r",
+                self.venue.venue_id, len(self.venue.lines), data.get("buffer_transcription", ""),
+            )
+
+        # Handle diff: apply pruning and new lines
+        elif msg_type == "diff":
+            n_pruned = data.get("lines_pruned", 0)
+            if n_pruned > 0:
+                # Broadcast prune message to frontend
+                await distribution_manager.broadcast(
+                    self.venue.venue_id,
+                    {
+                        "type": "prune_segments",
+                        "count": n_pruned,
+                        "session_id": self.venue.session_id,
+                        "timestamp": datetime.now(UTC).isoformat(),
+                    },
+                )
+                self.venue.lines = self.venue.lines[n_pruned:]
+
+            new_lines_data = data.get("new_lines") or []
+            new_line_dicts = []
+            for i, line in enumerate(new_lines_data):
+                text = (line.get("text") or "").strip()
+                if not text:
+                    continue
+                sequence = len(self.venue.lines) + len(new_line_dicts) + 1
+                line_dict = {"sequence": sequence, **line}
+                new_line_dicts.append(line_dict)
+                segment = {
+                    "id": str(uuid.uuid4()),
+                    "session_id": self.venue.session_id,
+                    "venue_id": self.venue.venue_id,
+                    "sequence": sequence,
+                    "type": "committed",
+                    "text": text,
+                    "start_time": _parse_timestamp(line.get("start")),
+                    "end_time": _parse_timestamp(line.get("end")),
+                    "timestamp": datetime.now(UTC).isoformat(),
+                }
+                await distribution_manager.broadcast(self.venue.venue_id, segment)
+                await self._store(segment)
+
+            self.venue.lines.extend(new_line_dicts)
+            log.info(
+                "[%s] diff: pruned %d, added %d, total %d, buffer=%r",
+                self.venue.venue_id, n_pruned, len(new_line_dicts), len(self.venue.lines),
+                data.get("buffer_transcription", ""),
+            )
+
+        else:
+            # Silently skip unknown message types
+            return
+
+        # Broadcast buffer_transcription as tentative (if it changed)
+        buffer = (data.get("buffer_transcription") or "").strip()
+        if buffer and buffer != self.venue.last_tentative:
+            self.venue.last_tentative = buffer
+            self.venue.sequence += 1  # Still increment for tentative
+            await distribution_manager.broadcast(
+                self.venue.venue_id,
+                {
+                    "id": str(uuid.uuid4()),
+                    "session_id": self.venue.session_id,
+                    "venue_id": self.venue.venue_id,
+                    "sequence": self.venue.sequence,
+                    "type": "tentative",
+                    "text": buffer,
+                    "start_time": None,
+                    "end_time": None,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                },
+            )
+
+    async def _store(self, seg: dict) -> None:
+        async with get_db_session() as db:
+            # Delete any existing segment with same session_id and sequence
+            await db.execute(
+                delete(Segment).where(
+                    Segment.session_id == seg["session_id"],
+                    Segment.sequence == seg["sequence"]
+                )
+            )
+            # Add the new segment
+            db.add(
+                Segment(
+                    id=seg["id"],
+                    session_id=seg["session_id"],
+                    sequence=seg["sequence"],
+                    segment_type=seg["type"],
+                    text=seg["text"],
+                    start_time=seg["start_time"],
+                    end_time=seg.get("end_time"),
+                )
+            )
 
 
 class TranscriptionManager:
@@ -117,12 +482,10 @@ class TranscriptionManager:
 
         venue = VenueSession(venue_id=venue_id, session_id=session_id)
         self.venues[venue_id] = venue
-        venue.send_task = asyncio.create_task(
-            self._send_loop(venue), name=f"send:{venue_id}"
-        )
-        venue.recv_task = asyncio.create_task(
-            self._recv_loop(venue), name=f"recv:{venue_id}"
-        )
+        venue.streamer = AudioStreamer(venue, self.settings)
+        venue.processor = TranscriptionProcessor(venue, self.settings)
+        await venue.streamer.start()
+        await venue.processor.start()
         log.info("[%s] session %s started", venue_id, session_id)
         return session_id
 
@@ -139,17 +502,17 @@ class TranscriptionManager:
         with contextlib.suppress(asyncio.QueueFull):
             venue.audio_queue.put_nowait(None)
 
-        # 2. Wait for sender to drain its queue and emit b"" to WLK.
-        await self._await_or_cancel(venue.send_task, "sender", venue.venue_id)
+        # 2. Stop streamer and processor
+        if venue.streamer:
+            await venue.streamer.stop()
+        if venue.processor:
+            await venue.processor.stop()
 
-        # 3. Sender is gone, so close the WS to unblock the receiver
-        #    (it might still be waiting on `async for raw in ws`).
-        await self._close_ws(venue)
+        # 3. Close WS
+        if venue.processor:
+            await venue.processor._close_ws()
 
-        # 4. Wait for receiver.
-        await self._await_or_cancel(venue.recv_task, "receiver", venue.venue_id)
-
-        # 5. Persist + announce.
+        # 4. Persist + announce.
         async with get_db_session() as db:
             await db.execute(
                 update(Session)
@@ -181,289 +544,3 @@ class TranscriptionManager:
     def get_session_id(self, venue_id: str) -> Optional[str]:
         v = self.venues.get(venue_id)
         return v.session_id if v else None
-
-    # ─── connection management ─────────────────────────────────────────
-
-    async def _ensure_ws(self, venue: VenueSession) -> Optional[Any]:
-        """Return a live WLK WebSocket, reconnecting if needed.
-
-        Returns None if the venue is being shut down. Multiple callers may
-        invoke this concurrently; the lock serialises connection creation
-        so we only ever hold one socket per venue.
-        """
-        async with venue.ws_lock:
-            if venue.ws is not None:
-                return venue.ws
-
-            delay = 1
-            while not venue.stop_event.is_set():
-                try:
-                    ws = await websockets.connect(
-                        self.settings.wlk_url + "?mode=diff",
-                        max_size=None,
-                        ping_interval=20,
-                        open_timeout=10,
-                    )
-                except Exception as e:
-                    log.warning(
-                        "[%s] WLK unreachable (%s: %s); retrying in %ds",
-                        venue.venue_id, type(e).__name__, e, delay,
-                    )
-                    if await self._sleep_or_stop(venue, delay):\
-                        return None
-                    delay = min(delay * 2, _RECONNECT_MAX_DELAY)
-                    continue
-
-                venue.ws = ws
-                venue.lines.clear()
-                venue.last_tentative = ""
-                log.info("[%s] WLK connected at %s", venue.venue_id, self.settings.wlk_url)
-                return ws
-
-            return None
-
-    async def _drop_ws(self, venue: VenueSession, ws: Any) -> None:
-        """Mark the given socket as dead. Idempotent across send/recv races."""
-        async with venue.ws_lock:
-            if venue.ws is ws:
-                venue.ws = None
-                with contextlib.suppress(Exception):
-                    await ws.close()
-
-    async def _close_ws(self, venue: VenueSession) -> None:
-        """Force-close the current WS, regardless of identity."""
-        async with venue.ws_lock:
-            if venue.ws is not None:
-                ws, venue.ws = venue.ws, None
-                with contextlib.suppress(Exception):
-                    await ws.close()
-
-    async def _sleep_or_stop(self, venue: VenueSession, seconds: float) -> bool:
-        """Sleep, returning True if stop_event fires before timeout."""
-        try:
-            await asyncio.wait_for(venue.stop_event.wait(), timeout=seconds)
-            return True
-        except asyncio.TimeoutError:
-            return False
-
-    async def _await_or_cancel(self, task: Optional[asyncio.Task], label: str, vid: str) -> None:
-        if task is None or task.done():
-            return
-        try:
-            await asyncio.wait_for(task, timeout=_SHUTDOWN_TIMEOUT)
-        except asyncio.TimeoutError:
-            log.warning("[%s] %s didn't exit cleanly, cancelling", vid, label)
-            task.cancel()
-            with contextlib.suppress(asyncio.CancelledError, Exception):
-                await task
-
-    # ─── send loop ─────────────────────────────────────────────────────
-
-    async def _send_loop(self, venue: VenueSession) -> None:
-        chunks_total = 0
-
-        while not venue.stop_event.is_set():
-            ws = await self._ensure_ws(venue)
-            if ws is None:
-                break
-
-            try:
-                while not venue.stop_event.is_set():
-                    chunk = await venue.audio_queue.get()
-                    if chunk is None:
-                        await ws.send(b"")
-                        log.info(
-                            "[%s] sender: clean EOS after %d chunks",
-                            venue.venue_id, chunks_total,
-                        )
-                        return
-
-                    await ws.send(chunk)
-                    chunks_total += 1
-            except websockets.ConnectionClosed as e:
-                log.warning(
-                    "[%s] sender: WLK connection closed (%s); will reconnect",
-                    venue.venue_id, e,
-                )
-                await self._drop_ws(venue, ws)
-            except Exception:
-                log.exception("[%s] sender error; will reconnect", venue.venue_id)
-                await self._drop_ws(venue, ws)
-                if await self._sleep_or_stop(venue, 1):
-                    break
-
-        log.info("[%s] sender exiting after %d chunks", venue.venue_id, chunks_total)
-
-    # ─── receive loop ──────────────────────────────────────────────────
-
-    async def _recv_loop(self, venue: VenueSession) -> None:
-        msg_total = 0
-
-        while not venue.stop_event.is_set():
-            ws = await self._ensure_ws(venue)
-            if ws is None:
-                break
-
-            try:
-                async for raw in ws:
-                    msg_total += 1
-                    if isinstance(raw, bytes):
-                        continue
-                    try:
-                        data = json.loads(raw)
-                    except json.JSONDecodeError:
-                        log.warning(
-                            "[%s] receiver: non-JSON: %r",
-                            venue.venue_id, raw[:120],
-                        )
-                        continue
-
-                    mtype = data.get("type")
-                    if mtype == "config":
-                        continue
-                    if mtype == "ready_to_stop":
-                        log.info("[%s] receiver: WLK ready_to_stop", venue.venue_id)
-                        return  # session is shutting down
-
-                    await self._broadcast(venue, data)
-
-                # async for ended without an exception → server closed gracefully.
-                log.info("[%s] receiver: WS closed by WLK; reconnecting", venue.venue_id)
-                await self._drop_ws(venue, ws)
-            except websockets.ConnectionClosed as e:
-                log.warning(
-                    "[%s] receiver: WLK connection closed (%s); will reconnect",
-                    venue.venue_id, e,
-                )
-                await self._drop_ws(venue, ws)
-            except Exception:
-                log.exception("[%s] receiver error; will reconnect", venue.venue_id)
-                await self._drop_ws(venue, ws)
-                if await self._sleep_or_stop(venue, 1):
-                    break
-
-        log.info("[%s] receiver exiting after %d messages", venue.venue_id, msg_total)
-
-    # ─── result fan-out ────────────────────────────────────────────────
-
-    async def _broadcast(self, venue: VenueSession, data: dict) -> None:
-        """Process snapshot or diff messages from WLK diff mode.
-
-        Snapshot: initializes lines state with sequences. Diff: applies pruning
-        (broadcasting removal) and new lines (broadcasting additions).
-        buffer_transcription is always broadcast as tentative.
-        """
-
-        msg_type = data.get("type")
-
-        # Handle snapshot: reset state with full lines list, assign sequences
-        if msg_type == "snapshot":
-            lines_data = data.get("lines") or []
-            venue.lines = []
-            for i, line in enumerate(lines_data):
-                text = (line.get("text") or "").strip()
-                if not text:
-                    continue
-                line_dict = {"sequence": i + 1, **line}
-                venue.lines.append(line_dict)
-                segment = {
-                    "id": str(uuid.uuid4()),
-                    "session_id": venue.session_id,
-                    "venue_id": venue.venue_id,
-                    "sequence": line_dict["sequence"],
-                    "type": "committed",
-                    "text": text,
-                    "start_time": _parse_timestamp(line.get("start")),
-                    "end_time": _parse_timestamp(line.get("end")),
-                    "timestamp": datetime.now(UTC).isoformat(),
-                }
-                await distribution_manager.broadcast(venue.venue_id, segment)
-                await self._store(segment)
-            venue.last_tentative = ""
-
-        # Handle diff: apply pruning and new lines
-        elif msg_type == "diff":
-            n_pruned = data.get("lines_pruned", 0)
-            if n_pruned > 0:
-                # Broadcast prune message to frontend
-                await distribution_manager.broadcast(
-                    venue.venue_id,
-                    {
-                        "type": "prune_segments",
-                        "count": n_pruned,
-                        "session_id": venue.session_id,
-                        "timestamp": datetime.now(UTC).isoformat(),
-                    },
-                )
-                venue.lines = venue.lines[n_pruned:]
-
-            new_lines_data = data.get("new_lines") or []
-            new_line_dicts = []
-            for i, line in enumerate(new_lines_data):
-                text = (line.get("text") or "").strip()
-                if not text:
-                    continue
-                sequence = len(venue.lines) + len(new_line_dicts) + 1
-                line_dict = {"sequence": sequence, **line}
-                new_line_dicts.append(line_dict)
-                segment = {
-                    "id": str(uuid.uuid4()),
-                    "session_id": venue.session_id,
-                    "venue_id": venue.venue_id,
-                    "sequence": sequence,
-                    "type": "committed",
-                    "text": text,
-                    "start_time": _parse_timestamp(line.get("start")),
-                    "end_time": _parse_timestamp(line.get("end")),
-                    "timestamp": datetime.now(UTC).isoformat(),
-                }
-                await distribution_manager.broadcast(venue.venue_id, segment)
-                await self._store(segment)
-
-            venue.lines.extend(new_line_dicts)
-
-        else:
-            # Silently skip unknown message types
-            return
-
-        # Broadcast buffer_transcription as tentative (if it changed)
-        buffer = (data.get("buffer_transcription") or "").strip()
-        if buffer and buffer != venue.last_tentative:
-            venue.last_tentative = buffer
-            venue.sequence += 1  # Still increment for tentative
-            await distribution_manager.broadcast(
-                venue.venue_id,
-                {
-                    "id": str(uuid.uuid4()),
-                    "session_id": venue.session_id,
-                    "venue_id": venue.venue_id,
-                    "sequence": venue.sequence,
-                    "type": "tentative",
-                    "text": buffer,
-                    "start_time": None,
-                    "end_time": None,
-                    "timestamp": datetime.now(UTC).isoformat(),
-                },
-            )
-
-    async def _store(self, seg: dict) -> None:
-        async with get_db_session() as db:
-            # Delete any existing segment with same session_id and sequence
-            await db.execute(
-                delete(Segment).where(
-                    Segment.session_id == seg["session_id"],
-                    Segment.sequence == seg["sequence"]
-                )
-            )
-            # Add the new segment
-            db.add(
-                Segment(
-                    id=seg["id"],
-                    session_id=seg["session_id"],
-                    sequence=seg["sequence"],
-                    segment_type=seg["type"],
-                    text=seg["text"],
-                    start_time=seg["start_time"],
-                    end_time=seg.get("end_time"),
-                )
-            )
