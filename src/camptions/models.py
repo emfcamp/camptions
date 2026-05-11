@@ -52,7 +52,7 @@ class Segment(Base):
     sequence = Column(Integer, nullable=False)
     segment_type = Column(String(20), nullable=False)  # tentative, committed, final
     text = Column(Text, nullable=False)
-    start_time = Column(Float, nullable=False)
+    start_time = Column(Float, nullable=True)
     end_time = Column(Float)
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 

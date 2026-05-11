@@ -24,8 +24,7 @@
             --padding: 2rem;
         }
 
-        html,
-        body {
+        html, body {
             height: 100%;
         }
 
@@ -40,8 +39,6 @@
             margin: 0;
             padding: 0;
             overflow: hidden;
-            --bg-color: #000000;
-            --text-color: #ffffff;
         }
 
         body::before {
@@ -95,21 +92,9 @@
             z-index: 100;
         }
 
-        #status.live {
-            background: #2AE28C;
-            color: #000730;
-        }
-
-        #status.offline {
-            background: #5a6580;
-            color: #fff;
-        }
-
-        #status.disconnected {
-            background: #F5515E;
-            color: #fff;
-        }
-
+        #status.live        { background: #2AE28C; color: #000730; }
+        #status.offline     { background: #5a6580; color: #fff; }
+        #status.disconnected { background: #F5515E; color: #fff; }
         #status.reconnecting {
             background: #F9E200;
             color: #000730;
@@ -117,47 +102,47 @@
         }
 
         @keyframes pulse {
-
-            0%,
-            100% {
-                opacity: 1;
-            }
-
-            50% {
-                opacity: 0.5;
-            }
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0.5; }
         }
 
+        /* Caption area — fixed viewport, clips overflow at top */
         #captions {
-            position: absolute;
+            position: fixed;
             inset: 0;
             overflow: hidden;
-            margin: 4rem;
+            margin: 4rem var(--padding) 6rem;
+            z-index: 1;
         }
 
+        /*
+         * Grid anchored to the top of the container. JS applies a negative
+         * translateY to keep the bottom line visible. The 3s ease-out
+         * transition gives the slow, smooth upward scroll effect.
+         */
         #captionsInner {
             position: absolute;
-            inset: 0;
+            top: 0;
+            left: 0;
+            right: 0;
             display: grid;
-            align-items: end;
-            min-height: 100%;
             gap: 0.5rem;
             pointer-events: none;
             transition: transform 3s ease-out;
             transform: translateY(0);
-            margin-bottom: 6rem;
         }
 
-        #captionsInner>* {
+        /* One block per WLK line */
+        .caption-block {
             pointer-events: auto;
         }
 
-        .caption-block {
-            margin-bottom: 0.5em;
+        .caption-block--tentative {
+            opacity: var(--tentative-opacity);
         }
 
-        .block-tentative {
-            opacity: var(--tentative-opacity);
+        .block-text {
+            line-height: var(--line-height);
         }
 
         .block-tentative::after {
@@ -166,25 +151,8 @@
         }
 
         @keyframes blink {
-
-            0%,
-            100% {
-                opacity: 1;
-            }
-
-            50% {
-                opacity: 0;
-            }
-        }
-
-        /* Divider shown between talks when title is known */
-        .block-separator {
-            font-size: 0.38em;
-            opacity: 0.35;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.1em;
-            margin: 0.8em 0 0.2em;
+            0%, 100% { opacity: 1; }
+            50%       { opacity: 0; }
         }
 
         /* Talk header bar */
@@ -202,11 +170,6 @@
             z-index: 90;
             border-bottom: 1px solid rgba(255, 255, 255, 0.08);
             font-size: 0.55em;
-        }
-
-        body.light #talkHeader {
-            background: rgba(255, 255, 255, 0.85);
-            border-bottom-color: rgba(0, 0, 0, 0.1);
         }
 
         .talk-now-label {
@@ -238,20 +201,6 @@
             flex-shrink: 0;
             font-size: 0.9em;
         }
-
-        /* Scrollbar styling */
-        ::-webkit-scrollbar {
-            width: 8px;
-        }
-
-        ::-webkit-scrollbar-track {
-            background: transparent;
-        }
-
-        ::-webkit-scrollbar-thumb {
-            background: rgba(255, 255, 255, 0.3);
-            border-radius: 4px;
-        }
     </style>
 </head>
 
@@ -264,22 +213,18 @@
     </div>
     <div id="status" class="disconnected">Connecting...</div>
     <div id="captions" role="region" aria-live="polite" aria-label="Live captions">
-        <div id="captionsInner">
-            <div id="captionText"></div>
-        </div>
+        <div id="captionsInner"></div>
     </div>
     <div id="brandMark" aria-hidden="true">
         <svg class="brand-emblem" viewBox="0 0 100 140" fill="none">
-            <line x1="50" y1="6" x2="50" y2="134" stroke="currentColor" stroke-width="5" stroke-linecap="round" />
-            <circle cx="50" cy="70" r="20" stroke="currentColor" stroke-width="5" fill="none" />
-            <path d="M37 70 Q43 60 50 70 T63 70" stroke="currentColor" stroke-width="4" fill="none"
-                stroke-linecap="round" />
-            <ellipse cx="50" cy="70" rx="34" ry="9" stroke="currentColor" stroke-width="5" fill="none"
-                transform="rotate(-22 50 70)" />
+            <line x1="50" y1="6" x2="50" y2="134" stroke="currentColor" stroke-width="5" stroke-linecap="round"/>
+            <circle cx="50" cy="70" r="20" stroke="currentColor" stroke-width="5" fill="none"/>
+            <path d="M37 70 Q43 60 50 70 T63 70" stroke="currentColor" stroke-width="4" fill="none" stroke-linecap="round"/>
+            <ellipse cx="50" cy="70" rx="34" ry="9" stroke="currentColor" stroke-width="5" fill="none" transform="rotate(-22 50 70)"/>
             <g fill="currentColor">
-                <path d="M28 22 L30 28 L36 30 L30 32 L28 38 L26 32 L20 30 L26 28 Z" />
-                <path d="M40 12 L41 15 L44 16 L41 17 L40 20 L39 17 L36 16 L39 15 Z" />
-                <path d="M22 38 L23 40 L25 41 L23 42 L22 44 L21 42 L19 41 L21 40 Z" />
+                <path d="M28 22 L30 28 L36 30 L30 32 L28 38 L26 32 L20 30 L26 28 Z"/>
+                <path d="M40 12 L41 15 L44 16 L41 17 L40 20 L39 17 L36 16 L39 15 Z"/>
+                <path d="M22 38 L23 40 L25 41 L23 42 L22 44 L21 42 L19 41 L21 40 Z"/>
             </g>
         </svg>
         <span>Electromagnetic Field <span class="brand-year">2026</span></span>
@@ -287,6 +232,7 @@
     <div id="qrCode" aria-hidden="true"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="/static/captions-client.js"></script>
     <script>
         const params = new URLSearchParams(location.search);
         const pathMatch = location.pathname.match(/^\/display\/([^/]+)\/?$/);
@@ -295,201 +241,71 @@
         const fontSize = params.get('fontSize');
 
         const qrUrl = `https://captions.emf.camp/v/${encodeURIComponent(venue)}`;
-        console.log('QR URL:', qrUrl);
         new QRCode(document.getElementById('qrCode'), {
             text: qrUrl,
             width: 128,
             height: 128,
             colorDark: '#ffffff',
             colorLight: '#000000',
-            correctLevel: QRCode.CorrectLevel.L
+            correctLevel: QRCode.CorrectLevel.L,
         });
-
 
         if (mode === 'light') document.body.classList.add('light');
         if (mode === 'high-contrast') document.body.classList.add('high-contrast');
         if (fontSize) document.documentElement.style.setProperty('--font-size', fontSize);
 
-        const captionsEl = document.getElementById('captionText');
-        const captionsViewport = document.getElementById('captions');
-        const captionsContainer = document.getElementById('captionsInner');
         const statusEl = document.getElementById('status');
         const talkHeader = document.getElementById('talkHeader');
         const talkTitleEl = document.getElementById('talkTitle');
         const talkTimeEl = document.getElementById('talkTime');
         const talkNextEl = document.getElementById('talkNext');
+        const captionsViewport = document.getElementById('captions');
+        const captionsInner = document.getElementById('captionsInner');
 
-        let ws = null;
-        let reconnectAttempts = 0;
-        let currentBlock = null;
-        let currentTalkTitle = null;
-        let currentTranslate = 0;
-        let segments = [];  // Array of committed segments
-
-        function setStatus(state, text) {
-            statusEl.className = state;
-            statusEl.textContent = text;
-        }
-
-        function wsUrl() {
-            const scheme = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            return `${scheme}//${location.host}/api/captions/stream/${venue}`;
-        }
-
-        function connect() {
-            if (ws) {
-                ws.onclose = null;
-                ws.close();
-            }
-            setStatus('reconnecting', 'Connecting...');
-            ws = new WebSocket(wsUrl());
-            ws.onopen = () => { reconnectAttempts = 0; };
-            ws.onmessage = event => { handleMessage(JSON.parse(event.data)); };
-            ws.onclose = () => {
-                setStatus('disconnected', 'Disconnected');
-                scheduleReconnect();
-            };
-            ws.onerror = console.error;
-        }
-
-        function scheduleReconnect() {
-            reconnectAttempts += 1;
-            const delay = Math.min(1000 * 2 ** Math.min(reconnectAttempts - 1, 5), 30000);
-            setTimeout(connect, delay);
-        }
-
-        function handleMessage(data) {
-            if (data.type === 'keepalive') return;
-            if (data.type === 'connected') {
-                setStatus(data.is_live ? 'live' : 'offline', data.is_live ? 'Connected · Live' : 'Connected · Source Offline');
-                return;
-            }
-            if (data.type === 'venue_live') {
-                setStatus('live', 'Connected · Live');
-                segments = [];
-                updateCaptionDisplay();
-                return;
-            }
-            if (data.type === 'venue_offline') {
-                setStatus('offline', 'Connected · Source Offline');
-                clearTentative();
-                return;
-            }
-            if (data.type === 'session_end') {
-                clearTentative();
-                segments = [];
-                updateCaptionDisplay();
-                return;
-            }
-            if (data.type === 'schedule_update') {
-                updateSchedule(data);
-                return;
-            }
-            if (data.type === 'prune_segments') {
-                segments.splice(0, data.count);
-                updateCaptionDisplay();
-                return;
-            }
-            if (data.type === 'tentative') {
-                updateTentative(data);
-                return;
-            }
-            if (data.type === 'committed') {
-                segments.push(data);
-                updateCaptionDisplay();
-                return;
-            }
-            console.warn('Unhandled message type', data.type);
-        }
-
-        function updateCaptionDisplay() {
-            clearTentative();
-            captionsEl.textContent = segments.map(s => s.text).join(' ');
-            trimContent();
-            updateDisplayPosition();
-        }
-
-        function commitSegment(data) {
-            // Legacy function, now handled by updateCaptionDisplay
-            segments.push(data);
-            updateCaptionDisplay();
-        }
-
-        function updateTentative(data) {
-            const prefix = captionsEl.textContent.trim() ? ' ' : '';
-            let tentative = captionsEl.querySelector('.block-tentative');
-            if (!tentative) {
-                tentative = document.createElement('span');
-                tentative.className = 'block-tentative';
-                captionsEl.appendChild(tentative);
-            }
-            tentative.textContent = prefix + data.text;
-            updateDisplayPosition();
-        }
-
-        function clearTentative() {
-            const tentative = captionsEl.querySelector('.block-tentative');
-            if (tentative) tentative.remove();
-        }
-
-        function trimContent() {
-            const text = captionsEl.textContent.trim();
-            const words = text.split(/\s+/).filter(Boolean);
-            if (words.length > 500) {
-                captionsEl.textContent = words.slice(-500).join(' ');
-            }
-        }
-
-
+        // Slowly scroll content up as it grows, anchored to the bottom of the
+        // viewport. The CSS 3s ease-out transition on captionsInner makes it smooth.
         function updateDisplayPosition() {
             const available = captionsViewport.clientHeight;
-            const contentHeight = captionsEl.scrollHeight;
-            const desired = Math.min(0, available - contentHeight - 200);
-            currentTranslate = Math.min(currentTranslate, desired);
-            captionsEl.style.transform = `translateY(${currentTranslate}px)`;
-        }
-
-        function scrollToBottom() {
-            // Display mode stays locked to the bottom via CSS, no browser scrollbar.
-        }
-
-        function updateSchedule(data) {
-            if (!data.now || !data.now.title) {
-                talkHeader.style.display = 'none';
-                currentTalkTitle = null;
-                return;
-            }
-            const newTitle = data.now.title;
-            if (newTitle !== currentTalkTitle) {
-                currentTalkTitle = newTitle;
-            }
-            talkTitleEl.textContent = newTitle;
-            talkTimeEl.textContent = data.now.start_time && data.now.end_time ? `${data.now.start_time}–${data.now.end_time}` : '';
-            talkNextEl.textContent = data.next && data.next.title ? `Next: ${data.next.title}` : '';
-            talkHeader.style.display = 'flex';
-        }
-
-        async function loadHistory() {
-            try {
-                const response = await fetch(`/api/captions/history/${venue}?limit=50`);
-                if (!response.ok) return;
-                const data = await response.json();
-                const segments = (data.segments || []).filter(s => s.text && s.text.trim());
-                if (!segments.length) return;
-                captionsEl.textContent = segments.map(s => s.text.trim()).join(' ');
-                trimContent();
-                updateDisplayPosition();
-            } catch (error) {
-                console.error('History load failed:', error);
+            const contentHeight = captionsInner.scrollHeight;
+            if (contentHeight > available) {
+                captionsInner.style.transform = `translateY(${available - contentHeight}px)`;
             }
         }
 
-        loadHistory().then(connect);
+        const client = new CaptionsClient({
+            venue,
+            containerEl: captionsInner,
+            onStatus(cls, text) {
+                statusEl.className = cls;
+                statusEl.textContent = text;
+            },
+            onSessionStart() {
+                captionsInner.style.transform = 'translateY(0)';
+            },
+            onSessionEnd() {},
+            onScheduleUpdate(data) {
+                if (!data.now || !data.now.title) {
+                    talkHeader.style.display = 'none';
+                    return;
+                }
+                talkTitleEl.textContent = data.now.title;
+                talkTimeEl.textContent = data.now.start_time && data.now.end_time
+                    ? `${data.now.start_time}–${data.now.end_time}` : '';
+                talkNextEl.textContent = data.next && data.next.title
+                    ? `Next: ${data.next.title}` : '';
+                talkHeader.style.display = 'flex';
+            },
+            onNewBlock() { updateDisplayPosition(); },
+        });
+
+        client.init();
 
         document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible' && (!ws || ws.readyState !== WebSocket.OPEN)) {
-                reconnectAttempts = 0;
-                connect();
+            if (document.visibilityState === 'visible') {
+                if (!client.ws || client.ws.readyState !== WebSocket.OPEN) {
+                    client.reconnectAttempts = 0;
+                    client._connect();
+                }
             }
         });
 
