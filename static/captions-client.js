@@ -97,7 +97,7 @@ class CaptionsClient {
         this.ws.onopen = () => { this.reconnectAttempts = 0; };
         this.ws.onmessage = e => this._handleMessage(JSON.parse(e.data));
         this.ws.onclose = () => {
-            this.onStatus('', 'Disconnected');
+            this.onStatus('disconnected', 'Disconnected');
             this._scheduleReconnect();
         };
         this.ws.onerror = console.error;

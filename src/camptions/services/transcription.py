@@ -102,8 +102,9 @@ class TranscriptionProcessor:
                     if mtype == "config":
                         continue
                     if mtype == "ready_to_stop":
-                        log.info("[%s] receiver: WLK ready_to_stop", venue.venue_id)
-                        return
+                        log.info("[%s] receiver: WLK ready_to_stop; reconnecting", venue.venue_id)
+                        await venue.wlk.drop(ws)
+                        break
 
                     await self._broadcast(data)
 

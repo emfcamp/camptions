@@ -141,6 +141,7 @@ async def get_caption_history(
         "segments": [
             {
                 "id": s.id,
+                "sequence": s.sequence,
                 "text": s.text,
                 "start_time": s.start_time,
                 "end_time": s.end_time,

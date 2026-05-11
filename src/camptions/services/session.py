@@ -99,10 +99,6 @@ class WLKConnection:
                 with contextlib.suppress(Exception):
                     await ws.close()
 
-    def notify_reconnect(self) -> None:
-        """Called by send/receive loops after dropping; lets both loops retry."""
-        # No-op currently — both loops call ensure() which will reconnect.
-        pass
 
 
 @dataclass
