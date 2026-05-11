@@ -612,8 +612,7 @@
         document.addEventListener('visibilitychange', () => {
             if (document.visibilityState === 'visible' && client) {
                 if (!client.ws || client.ws.readyState !== WebSocket.OPEN) {
-                    client.reconnectAttempts = 0;
-                    client._connect();
+                    client.reconnect();
                 }
             }
         });

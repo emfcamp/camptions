@@ -19,14 +19,14 @@
 class CaptionsClient {
     /**
      * @param {object} opts
-     * @param {string}      opts.venue          - venue ID for WS URL and history fetch
-     * @param {HTMLElement} opts.containerEl     - element that receives .caption-block children
-     * @param {number}      [opts.maxBlocks=500] - evict oldest block+map entry when exceeded
-     * @param {function}    [opts.onStatus]      - (cssClass: string, text: string) => void
-     * @param {function}    [opts.onSessionStart] - () => void — fired on venue_live
-     * @param {function}    [opts.onSessionEnd]   - () => void — fired on session_end / venue_offline
+     * @param {string}      opts.venue             - venue ID for WS URL and history fetch
+     * @param {HTMLElement} opts.containerEl        - element that receives .caption-block children
+     * @param {number}      [opts.maxBlocks=500]    - evict oldest block when exceeded
+     * @param {function}    [opts.onStatus]         - (cssClass: string, text: string) => void
+     * @param {function}    [opts.onSessionStart]   - () => void — fired on venue_live
+     * @param {function}    [opts.onSessionEnd]     - () => void — fired on session_end / venue_offline
      * @param {function}    [opts.onScheduleUpdate] - (data) => void
-     * @param {function}    [opts.onNewBlock]     - (blockEl: HTMLElement) => void — after each new committed block
+     * @param {function}    [opts.onNewBlock]       - (blockEl: HTMLElement) => void
      */
     constructor({
         venue,
@@ -49,7 +49,6 @@ class CaptionsClient {
 
         /** @type {Map<number, HTMLElement>} sequence → .caption-block element */
         this.segmentMap = new Map();
-
         /** @type {HTMLElement|null} */
         this.tentativeBlock = null;
 
@@ -68,10 +67,8 @@ class CaptionsClient {
     /** Close the WS and cancel any pending reconnect. */
     destroy() {
         this._destroyed = true;
-        if (this._reconnectTimer !== null) {
-            clearTimeout(this._reconnectTimer);
-            this._reconnectTimer = null;
-        }
+        clearTimeout(this._reconnectTimer);
+        this._reconnectTimer = null;
         if (this.ws) {
             this.ws.onclose = null;
             this.ws.close();
@@ -79,12 +76,13 @@ class CaptionsClient {
         }
     }
 
-    // ── WebSocket lifecycle ──────────────────────────────────────────────────
-
-    _wsUrl() {
-        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-        return `${proto}//${location.host}/api/captions/stream/${this.venue}`;
+    /** Reset backoff and reconnect immediately. */
+    reconnect() {
+        this.reconnectAttempts = 0;
+        this._connect();
     }
+
+    // ── WebSocket lifecycle ──────────────────────────────────────────────────
 
     _connect() {
         if (this._destroyed) return;
@@ -93,7 +91,8 @@ class CaptionsClient {
             this.ws.close();
         }
         this.onStatus('reconnecting', 'Connecting...');
-        this.ws = new WebSocket(this._wsUrl());
+        const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+        this.ws = new WebSocket(`${proto}//${location.host}/api/captions/stream/${this.venue}`);
         this.ws.onopen = () => { this.reconnectAttempts = 0; };
         this.ws.onmessage = e => this._handleMessage(JSON.parse(e.data));
         this.ws.onclose = () => {
@@ -140,7 +139,7 @@ class CaptionsClient {
                 this.onScheduleUpdate(data);
                 return;
             case 'committed':
-                this._onCommitted(data.sequence, data.text, data.timestamp);
+                this._onCommitted(data.sequence, data.text);
                 return;
             case 'tentative':
                 this._onTentative(data.text);
@@ -152,7 +151,7 @@ class CaptionsClient {
 
     // ── Segment rendering ────────────────────────────────────────────────────
 
-    _onCommitted(seq, text, timestamp) {
+    _onCommitted(seq, text) {
         if (!text || !text.trim()) return;
         this._clearTentative();
         const block = this._ensureBlock(seq);
@@ -185,18 +184,14 @@ class CaptionsClient {
         }
     }
 
-    /** Returns existing block for seq, or creates and appends a new one. */
     _ensureBlock(seq) {
-        if (this.segmentMap.has(seq)) {
-            return this.segmentMap.get(seq);
-        }
+        if (this.segmentMap.has(seq)) return this.segmentMap.get(seq);
         const block = document.createElement('div');
         block.className = 'caption-block';
         block.dataset.seq = seq;
         const p = document.createElement('p');
         p.className = 'block-text';
         block.appendChild(p);
-        // Insert before tentative block if present, otherwise append.
         if (this.tentativeBlock) {
             this.containerEl.insertBefore(block, this.tentativeBlock);
         } else {
@@ -206,21 +201,17 @@ class CaptionsClient {
         return block;
     }
 
-    /** Evict the oldest block from the DOM and map when over maxBlocks. */
     _trimBlocks() {
         while (this.segmentMap.size > this.maxBlocks) {
-            const [oldestSeq, oldestBlock] = this.segmentMap.entries().next().value;
-            oldestBlock.remove();
-            this.segmentMap.delete(oldestSeq);
+            const [seq, block] = this.segmentMap.entries().next().value;
+            block.remove();
+            this.segmentMap.delete(seq);
         }
     }
 
-    /** Remove all committed blocks and clear the segment map. */
     _clearAll() {
         this._clearTentative();
-        for (const block of this.segmentMap.values()) {
-            block.remove();
-        }
+        for (const block of this.segmentMap.values()) block.remove();
         this.segmentMap.clear();
     }
 
@@ -230,11 +221,8 @@ class CaptionsClient {
         try {
             const res = await fetch(`/api/captions/history/${this.venue}?limit=200`);
             if (!res.ok) return;
-            const data = await res.json();
-            const segments = (data.segments || []).filter(s => s.text && s.text.trim());
-            for (const s of segments) {
-                // History segments may not have sequence numbers in older DB rows;
-                // use a synthetic negative sequence to avoid colliding with live seqs.
+            const { segments = [] } = await res.json();
+            for (const s of segments.filter(s => s.text && s.text.trim())) {
                 const seq = s.sequence ?? -(this.segmentMap.size + 1);
                 this._onCommitted(seq, s.text);
             }
@@ -244,5 +232,4 @@ class CaptionsClient {
     }
 }
 
-// Export for use as a plain <script> tag (no module system required).
 window.CaptionsClient = CaptionsClient;

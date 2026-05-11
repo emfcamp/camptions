@@ -126,13 +126,7 @@ class TranscriptionProcessor:
         log.info("[%s] receiver exiting after %d messages", venue.venue_id, msg_total)
 
     async def _broadcast(self, data: dict) -> None:
-        """Apply WLK snapshot/diff to venue state and fan out to subscribers.
-
-        Snapshot: resets WLK line buffer; skips lines already committed to clients
-        (dedup by text after reconnect). Diff: drops pruned lines silently (no
-        frontend notification), appends new lines with stable per-session sequences.
-        Buffer tentative is broadcast unchanged whenever it changes.
-        """
+        """Apply WLK snapshot/diff to venue state and fan out to subscribers."""
         venue = self.venue
         msg_type = data.get("type")
 
@@ -234,13 +228,9 @@ class TranscriptionProcessor:
                     segment_type=seg["type"],
                     text=seg["text"],
                     start_time=seg["start_time"],
-                    end_time=seg.get("end_time"),
+                    end_time=seg["end_time"],
                 )
             )
-
-    async def close_wlk(self) -> None:
-        await self.venue.wlk.close()
-
 
 class TranscriptionManager:
     """Per-venue WLK bridge with independent send/receive loops."""
@@ -288,7 +278,7 @@ class TranscriptionManager:
             await venue.streamer.stop()
         if venue.processor:
             await venue.processor.stop()
-            await venue.processor.close_wlk()
+            await venue.wlk.close()
 
         async with get_db_session() as db:
             await db.execute(

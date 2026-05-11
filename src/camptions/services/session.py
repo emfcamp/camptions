@@ -100,7 +100,6 @@ class WLKConnection:
                     await ws.close()
 
 
-
 @dataclass
 class VenueSession:
     venue_id: str
