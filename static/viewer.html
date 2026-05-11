@@ -609,14 +609,6 @@
             applyTheme();
         });
 
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible' && client) {
-                if (!client.ws || client.ws.readyState !== WebSocket.OPEN) {
-                    client.reconnect();
-                }
-            }
-        });
-
         async function init() {
             await fetchVenues();
             renderVenueTabs();

@@ -300,14 +300,6 @@
 
         client.init();
 
-        document.addEventListener('visibilitychange', () => {
-            if (document.visibilityState === 'visible') {
-                if (!client.ws || client.ws.readyState !== WebSocket.OPEN) {
-                    client.reconnect();
-                }
-            }
-        });
-
         document.body.addEventListener('dblclick', () => {
             if (!document.fullscreenElement) document.documentElement.requestFullscreen();
             else document.exitFullscreen();

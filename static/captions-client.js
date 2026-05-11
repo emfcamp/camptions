@@ -58,15 +58,22 @@ class CaptionsClient {
         this._destroyed = false;
     }
 
-    /** Load history then open the WebSocket. */
+    /** Load history, open the WebSocket, and register page-lifecycle hooks. */
     async init() {
+        this._visibilityHandler = () => {
+            if (document.visibilityState === 'visible') {
+                if (!this.ws || this.ws.readyState !== WebSocket.OPEN) this.reconnect();
+            }
+        };
+        document.addEventListener('visibilitychange', this._visibilityHandler);
         await this._loadHistory();
         this._connect();
     }
 
-    /** Close the WS and cancel any pending reconnect. */
+    /** Close the WS, cancel any pending reconnect, and remove event listeners. */
     destroy() {
         this._destroyed = true;
+        document.removeEventListener('visibilitychange', this._visibilityHandler);
         clearTimeout(this._reconnectTimer);
         this._reconnectTimer = null;
         if (this.ws) {
