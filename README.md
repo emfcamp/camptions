@@ -1,14 +1,14 @@
 # EMF Camptions v2
 
-Live captioning system for EMF Camp using WhisperLiveKit.
+Live captioning system for EMF Camp using WhisperLive (Collabora).
 
 ## Overview
 
-EMF Camptions provides real-time speech-to-text captioning for live events. Audio is captured from stage microphones via Raspberry Pi devices, streamed to a central server running WhisperLiveKit for transcription, and distributed to display screens and user devices.
+EMF Camptions provides real-time speech-to-text captioning for live events. Audio is captured from stage microphones via Raspberry Pi devices, streamed to a central server running WhisperLive for transcription, and distributed to display screens and user devices.
 
 ## Features
 
-- Real-time speech-to-text using WhisperLiveKit with SimulStreaming
+- Real-time speech-to-text using WhisperLive (faster-whisper backend)
 - Multiple venue support with independent audio streams
 - WebSocket and Server-Sent Events (SSE) for caption distribution
 - Large screen display mode for venue monitors
@@ -37,8 +37,8 @@ open http://localhost:8000/
 # Install dependencies
 pip install -e ".[dev]"
 
-# Run the server (WLK must be running separately)
-CAMPTIONS_WLK_URL=ws://localhost:8000/asr \
+# Run the server (WL must be running separately)
+CAMPTIONS_WL_URL=ws://localhost:9090 \
 CAMPTIONS_ADMIN_TOKEN=dev \
 CAMPTIONS_INGEST_TOKEN=dev \
 uvicorn camptions.main:app --reload
@@ -49,7 +49,7 @@ uvicorn camptions.main:app --reload
 ```
 ┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
 │  Raspberry Pi   │     │  Central Server │     │    Displays     │
-│  (Audio Capture)│────▶│  (WhisperLiveKit)────▶│  (WebSocket)    │
+│  (Audio Capture)│────▶│  (WhisperLive)  │────▶│  (WebSocket)    │
 └─────────────────┘     └─────────────────┘     └─────────────────┘
                               │
                               ▼
@@ -95,7 +95,11 @@ Environment variables (prefix with `CAMPTIONS_`):
 | `PORT` | `8000` | Server port |
 | `DEBUG` | `false` | Enable debug logging and SQLAlchemy echo |
 | `DATABASE_URL` | `sqlite+aiosqlite:///./camptions.db` | Database connection string |
-| `WLK_URL` | `ws://wlk:8000/asr` | WhisperLiveKit WebSocket URL |
+| `WL_URL` | `ws://wl:9090` | WhisperLive WebSocket URL |
+| `WHISPER_MODEL` | `small.en` | Whisper model passed in the WL handshake |
+| `WHISPER_LANGUAGE` | `en` | Whisper language passed in the WL handshake |
+| `WHISPER_USE_VAD` | `false` | Enable WL's VAD filter |
+| `WL_RECONNECT_INTERVAL` | `3300` | Seconds before the send loop drops & reconnects WL (must be < `--max_connection_time`) |
 | `ADMIN_TOKEN` | *(required)* | Bearer token for admin and venue-write endpoints |
 | `INGEST_TOKEN` | *(required)* | Token for Pi audio-ingest WebSocket (`?token=`) |
 | `DEFAULT_VENUES` | `["stage-a", "stage-b", "stage-c"]` | Default venue IDs created by `init-venues` |

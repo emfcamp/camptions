@@ -55,8 +55,9 @@ async def audio_ingest(
 
     transcription_manager = get_transcription_manager()
     session_id = await transcription_manager.start_session(venue_id, session_title)
-    # venue_live is broadcast by TranscriptionManager once WLK actually
-    # connects — viewers only show "Live" when captions can be produced.
+    # venue_live is broadcast by TranscriptionManager once WL actually
+    # connects and handshakes — viewers only show "Live" when captions can
+    # be produced.
 
     chunks = 0
     bytes_in = 0

@@ -21,11 +21,14 @@ class Settings(BaseSettings):
     # Database
     database_url: str = "sqlite+aiosqlite:///./camptions.db"
 
-    wlk_url: str = "ws://wlk:8000/asr"
-
-    @property
-    def wlk_url_full(self) -> str:
-        return self.wlk_url + "?mode=diff"
+    # WhisperLive sidecar — runs as a separate container.
+    wl_url: str = "ws://wl:9090"
+    whisper_model: str = "small.en"
+    whisper_language: str = "en"
+    whisper_use_vad: bool = False
+    # Proactive WL reconnect interval in seconds. Must be less than the
+    # --max_connection_time set on the WL container (default 3600s).
+    wl_reconnect_interval: int = 3300
 
     # Auth — required in production; unset means the protected endpoints will refuse all requests
     admin_token: str = ""

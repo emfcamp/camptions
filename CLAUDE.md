@@ -1,35 +1,45 @@
 # EMF Camptions
 
-Live captioning system for EMF Camp. Raspberry Pis capture audio from stage mics, stream it to a central server running WhisperLiveKit for real-time transcription, and distribute captions to display screens and audience devices via WebSocket.
+Live captioning system for EMF Camp. Raspberry Pis capture audio from stage mics, stream it to a central server running WhisperLive (Collabora) for real-time transcription, and distribute captions to display screens and audience devices via WebSocket.
 
 ## Architecture
 
 - **Audio ingest**: Pi connects to `WebSocket /api/audio/ingest/{venue_id}` and streams raw PCM (16 kHz, 16-bit signed, mono). The Pi uses `arecord -D plughw:...` so ALSA's plug layer handles any rate conversion from the mic's native rate with proper anti-aliasing. Connection = live session. Disconnect = session ends automatically.
-- **Transcription**: WhisperLiveKit (`whisperlivekit` pip package) runs as a separate Docker container (sidecar). For each active venue, camptions opens a WebSocket to `ws://wlk:8000/asr?mode=diff`, streams raw PCM bytes, and receives JSON messages in the snapshot/diff protocol (see below). The WLK URL is configured via `CAMPTIONS_WLK_URL`.
+- **Transcription**: WhisperLive (`ghcr.io/collabora/whisperlive-cpu`) runs as a separate Docker container (sidecar) with `--raw_pcm_input`. For each active venue, camptions opens a WebSocket to `ws://wl:9090`, sends a JSON handshake, waits for `SERVER_READY`, then forwards raw PCM bytes. The server returns `{segments: [{text, start, end, completed}]}` messages; `completed: true` = final segment. The WL URL is configured via `CAMPTIONS_WL_URL`.
 - **Distribution**: `DistributionManager` broadcasts caption segments and venue status events to all connected WebSocket/SSE caption subscribers.
 - **Sessions**: Created automatically when audio connects, ended when it disconnects. No manual control. Segments are stored to SQLite under their session.
 - **Schedule**: `ScheduleService` polls the EMF Camp now-and-next API every 60 s and broadcasts `schedule_update` messages to all venue subscribers.
 
-## WhisperLiveKit protocol
+## WhisperLive protocol
 
-WLK is started with `--pcm-input` (accepts raw int16 PCM) and `--log-level WARNING`. The camptions backend connects with `?mode=diff` and receives two message types:
+WL is launched with `--backend faster_whisper --raw_pcm_input --max_connection_time 3600`. The camptions backend's `WLConnection.ensure()` performs the handshake on every fresh socket:
 
-| Type | Fields | Meaning |
-|------|--------|---------|
-| `config` | — | Initial handshake; ignored |
-| `snapshot` | `lines[]`, `buffer_transcription` | Full state of current transcript; replace local line buffer |
-| `diff` | `lines_pruned`, `new_lines[]`, `n_lines`, `buffer_transcription` | Incremental update; prune oldest N lines, append new ones |
-| `ready_to_stop` | — | WLK is shutting down; reconnect |
+1. Send JSON: `{uid, language, task: "transcribe", model, use_vad, send_last_n_segments: 10}` (uid = `<venue_id>-<session_id>`).
+2. Read messages until `{"message": "SERVER_READY"}` arrives. `{"status": "WAIT"}` (server full) and `{"status": "ERROR"}` raise so backoff applies.
+3. Once `SERVER_READY` is observed, `on_state_change(True)` fires — viewers flip to "Live".
 
-Each `line` object has `text`, `start` (H:MM:SS.cc), `end` (H:MM:SS.cc). `buffer_transcription` is the in-progress partial text.
+Transcription messages from WL look like:
+
+```json
+{
+  "segments": [
+    {"text": "Hello world", "start": 1.23, "end": 2.45, "completed": true},
+    {"text": "and we are…", "start": 2.45, "end": 3.10, "completed": false}
+  ]
+}
+```
+
+`completed: true` segments are stable and committed. The last entry may be `completed: false` — that's the in-progress tentative. The backend dedupes committed segments by `start` timestamp so audio-ring replays after a reconnect don't re-emit segments we've already broadcast.
+
+The send loop proactively reconnects every `CAMPTIONS_WL_RECONNECT_INTERVAL` seconds (default 3300 s, comfortably under WL's 1 h `--max_connection_time` cap). On each new WL connection, the last ~5 s of audio (50 × 100 ms chunks) is replayed so Whisper re-enters with sentence context. End-of-stream is the text frame `"END_OF_AUDIO"`.
 
 ## Key WebSocket message types (server → caption viewer)
 
 | Type | Meaning |
 |------|---------|
 | `connected` | Initial handshake; includes `is_live` bool |
-| `venue_live` | Audio ingest just connected |
-| `venue_offline` | Audio ingest just disconnected |
+| `venue_live` | Pi audio is streaming AND WL is handshaked |
+| `venue_offline` | Pi or WL is not currently available |
 | `tentative` | In-progress transcription (may change) |
 | `committed` | Final transcription segment |
 | `keepalive` | 30 s ping to keep connection alive |
@@ -53,8 +63,8 @@ src/camptions/
 │   └── schedule.py      # GET /api/schedule/now-and-next
 └── services/
     ├── transcription.py # TranscriptionManager + TranscriptionProcessor
-    ├── audio_streamer.py# AudioStreamer — sends PCM queue → WLK
-    ├── session.py       # VenueSession dataclass, WLKConnection, helpers
+    ├── audio_streamer.py# AudioStreamer — sends PCM queue → WL, with replay ring
+    ├── session.py       # VenueSession dataclass, WLConnection, helpers
     ├── distribution.py  # DistributionManager (broadcast to WS/SSE subscribers)
     └── schedule.py      # ScheduleService — polls EMF now-and-next API
 static/
@@ -74,10 +84,10 @@ static/
 Pi audio WS  →  process_audio()  →  audio_queue
                                           │
                                           ▼
-                                 AudioStreamer._send_loop
-                                          │   (shared WLKConnection)
+                                 AudioStreamer._send_loop  (ring buffer)
+                                          │   (shared WLConnection)
                                           ▼
-                                       WLK WS
+                                        WL WS
                                           │
                                           ▼
                              TranscriptionProcessor._recv_loop
@@ -86,7 +96,7 @@ Pi audio WS  →  process_audio()  →  audio_queue
                                 distribution + DB
 ```
 
-Send and receive share one `WLKConnection`. WLK going away does not end the session — audio keeps queueing, both loops reconnect, transcription resumes. Session ends only when `end_session()` is called (Pi disconnect or shutdown).
+Send and receive share one `WLConnection`. WL going away (either WL's max-connection-time cap firing, or a network glitch, or our proactive reconnect timer) does not end the session — audio keeps queueing, both loops reconnect via `ensure(handshake=...)`, the 5 s replay ring re-seeds context, and transcription resumes. Session ends only when `end_session()` is called (Pi disconnect or shutdown). `committed_starts` survives WL reconnects within one Pi session so replays don't double-emit segments.
 
 ## STATIC_DIR resolution
 
@@ -96,24 +106,23 @@ Static files are at `/app/static` in Docker (installed package, different `__fil
 
 Two services in `docker-compose.yml`:
 
-- **`wlk`** — custom image from `Dockerfile.wlk`; installs `whisperlivekit` and starts with `--pcm-input`. Listens on port 8000 inside the compose network. Model and language are set via CMD args in the Dockerfile. Model weights are cached in the `whisper-cache` named volume (`/root/.cache/huggingface/hub`); subsequent starts are instant.
-- **`camptions`** — our FastAPI app. Connects to `ws://wlk:8000/asr` per active venue (set via `CAMPTIONS_WLK_URL`). Dockerfile uses a two-step pip install: deps-only layer (invalidated only on `pyproject.toml` changes) then `pip install --no-deps .` after copying source.
-
-`HF_TOKEN` env var is passed through to the `wlk` service for gated models.
+- **`wl`** — `ghcr.io/collabora/whisperlive-cpu:latest`, started with `--port 9090 --backend faster_whisper --raw_pcm_input --max_connection_time 3600`. Model weights are cached in the `whisper-cache` named volume (`/root/.cache`); subsequent starts are fast.
+- **`camptions`** — our FastAPI app. Connects to `ws://wl:9090` per active venue (set via `CAMPTIONS_WL_URL`). Dockerfile uses a two-step pip install: deps-only layer (invalidated only on `pyproject.toml` changes) then `pip install --no-deps .` after copying source.
 
 ## Running locally
 
 ```bash
 pip install -e ".[dev]"
-# Run WLK separately: docker run <image> wlk --host 0.0.0.0 --pcm-input
-CAMPTIONS_WLK_URL=ws://localhost:8000/asr uvicorn camptions.main:app --reload --port 8001
+# Run WL separately (CPU):
+docker run --rm -p 9090:9090 ghcr.io/collabora/whisperlive-cpu:latest \
+  --port 9090 --backend faster_whisper --raw_pcm_input --max_connection_time 3600
+CAMPTIONS_WL_URL=ws://localhost:9090 uvicorn camptions.main:app --reload --port 8001
 curl -X POST http://localhost:8001/api/admin/init-venues
 ```
 
 ## Running with Docker
 
 ```bash
-export HF_TOKEN=hf_...          # optional, needed for gated models
 docker compose up --build
 curl -X POST http://localhost:8000/api/admin/init-venues
 ```
@@ -121,8 +130,8 @@ curl -X POST http://localhost:8000/api/admin/init-venues
 ## Frontend status states
 
 Both `viewer.html` and `display.html` show three states:
-- **Connected · Live** — WebSocket up, audio streaming
-- **Connected · Source Offline** — WebSocket up, no audio
+- **Connected · Live** — WebSocket up, Pi audio streaming, WL handshaked
+- **Connected · Source Offline** — WebSocket up, but either no Pi audio or WL is not reachable
 - **Disconnected** — WebSocket down (reconnects indefinitely with capped exponential backoff, max 30 s)
 
 When switching venues in the viewer, `ws.onclose = null` is set before `ws.close()` to prevent the close event triggering a spurious reconnect loop.

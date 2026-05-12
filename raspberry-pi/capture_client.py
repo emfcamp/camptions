@@ -11,7 +11,7 @@ ALSA aliases (HDMI / modem / phoneline definitions that don't resolve)
 and on systems without JACK installed. arecord talks ALSA directly and
 is available on every Pi out of the box.
 
-We capture at 16 kHz mono S16_LE — what WhisperLiveKit's --pcm-input mode
+We capture at 16 kHz mono S16_LE — what WhisperLive's --raw_pcm_input mode
 wants directly. The `plughw:` ALSA device prefix lets the kernel resample
 from the mic's native rate (typically 44.1/48 kHz) with proper anti-alias
 filtering, so the server can forward bytes through unchanged.

@@ -56,7 +56,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(
     title="EMF Camptions",
     version="2.0.0",
-    description="Live captioning system for EMF Camp using WhisperLiveKit",
+    description="Live captioning system for EMF Camp using WhisperLive",
     lifespan=lifespan,
 )
 
