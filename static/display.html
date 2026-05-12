@@ -125,27 +125,22 @@
             top: 0;
             left: 0;
             right: 0;
-            display: grid;
-            gap: 0.5rem;
+            line-height: var(--line-height);
             pointer-events: none;
             transition: transform 3s ease-out;
             transform: translateY(0);
         }
 
-        /* One block per WLK line */
-        .caption-block {
+        /* Committed segments and the trailing tentative both flow inline. */
+        .caption-segment {
             pointer-events: auto;
         }
 
-        .caption-block--tentative {
+        .caption-tentative {
             opacity: var(--tentative-opacity);
         }
 
-        .block-text {
-            line-height: var(--line-height);
-        }
-
-        .block-tentative::after {
+        .caption-tentative::after {
             content: ' \25ae';
             animation: blink 1s infinite;
         }

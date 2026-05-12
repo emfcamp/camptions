@@ -177,49 +177,33 @@
         }
 
         main {
-            position: relative;
             z-index: 1;
-            padding: 1rem;
-            padding-bottom: 6rem;
+            padding: 7rem 1rem 5rem;
         }
 
         footer {
             background: var(--surface-color);
             padding: 1rem;
             border-top: 1px solid rgba(255,255,255,0.1);
-            position: sticky;
+            position: fixed;
             bottom: 0;
+            left: 0;
+            right: 0;
             z-index: 100;
         }
 
+
         #captionsInner {
-            display: grid;
-            gap: 0.75rem;
-        }
-
-        /* One block per WLK line */
-        .caption-block {
-            padding: 0.75rem;
-            background: var(--surface-color);
-            border-radius: 0.5rem;
-            animation: slideIn 0.2s ease-out;
-        }
-
-        .caption-block--tentative {
-            border-left: 2px solid var(--accent-color);
-        }
-
-        @keyframes slideIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to   { opacity: 1; transform: translateY(0); }
-        }
-
-        .block-text {
             font-size: var(--caption-font-size, 1rem);
             line-height: 1.5;
         }
 
-        .block-tentative {
+        /* Committed segments and the trailing tentative both flow inline. */
+        .caption-segment {
+            /* Inline by default — no further styling. */
+        }
+
+        .caption-tentative {
             opacity: 0.5;
         }
 
@@ -333,7 +317,7 @@
 
         #jumpToBottomBtn {
             position: fixed;
-            bottom: 6.5rem;
+            bottom: 5rem;
             right: 1.5rem;
             z-index: 95;
             width: 3rem;
@@ -596,12 +580,12 @@
         });
 
         document.getElementById('fontIncrease').addEventListener('click', () => {
-            fontSize = Math.min(3.5, fontSize + 0.125);
+            fontSize = Math.min(20, fontSize + 0.5);
             localStorage.setItem('fontSize', fontSize);
             applyTheme();
         });
         document.getElementById('fontDecrease').addEventListener('click', () => {
-            fontSize = Math.max(0.75, fontSize - 0.125);
+            fontSize = Math.max(0.75, fontSize - 0.5);
             localStorage.setItem('fontSize', fontSize);
             applyTheme();
         });

@@ -20,7 +20,7 @@ class CaptionsClient {
     /**
      * @param {object} opts
      * @param {string}      opts.venue             - venue ID for WS URL and history fetch
-     * @param {HTMLElement} opts.containerEl        - element that receives .caption-block children
+     * @param {HTMLElement} opts.containerEl        - element that receives .caption-segment / .caption-tentative spans
      * @param {number}      [opts.maxBlocks=500]    - evict oldest block when exceeded
      * @param {function}    [opts.onStatus]         - (cssClass: string, text: string) => void
      * @param {function}    [opts.onSessionStart]   - () => void — fired on venue_live
@@ -47,10 +47,10 @@ class CaptionsClient {
         this.onScheduleUpdate = onScheduleUpdate;
         this.onNewBlock = onNewBlock;
 
-        /** @type {Map<number, HTMLElement>} sequence → .caption-block element */
+        /** @type {Map<number, HTMLElement>} sequence → .caption-segment span */
         this.segmentMap = new Map();
         /** @type {HTMLElement|null} */
-        this.tentativeBlock = null;
+        this.tentativeSpan = null;
 
         this.ws = null;
         this.reconnectAttempts = 0;
@@ -157,14 +157,17 @@ class CaptionsClient {
     }
 
     // ── Segment rendering ────────────────────────────────────────────────────
+    // Committed segments are appended as inline <span>s into containerEl, so
+    // captions flow as continuous text rather than one block per segment.
+    // The tentative is a trailing <span> that's replaced (or removed) in
+    // place; new committed segments are inserted before it.
 
     _onCommitted(seq, text) {
         if (!text || !text.trim()) return;
-        this._clearTentative();
-        const block = this._ensureBlock(seq);
-        block.querySelector('.block-text').textContent = text.trim();
-        this._trimBlocks();
-        this.onNewBlock(block);
+        const span = this._ensureSegment(seq);
+        span.textContent = text.trim() + ' ';
+        this._trimSegments();
+        this.onNewBlock(span);
     }
 
     _onTentative(text) {
@@ -172,53 +175,47 @@ class CaptionsClient {
             this._clearTentative();
             return;
         }
-        if (!this.tentativeBlock) {
-            this.tentativeBlock = document.createElement('div');
-            this.tentativeBlock.className = 'caption-block caption-block--tentative';
-            const p = document.createElement('p');
-            p.className = 'block-text block-tentative';
-            this.tentativeBlock.appendChild(p);
-            this.containerEl.appendChild(this.tentativeBlock);
+        if (!this.tentativeSpan) {
+            this.tentativeSpan = document.createElement('span');
+            this.tentativeSpan.className = 'caption-tentative';
+            this.containerEl.appendChild(this.tentativeSpan);
         }
-        this.tentativeBlock.querySelector('.block-text').textContent = text.trim();
-        this.onNewBlock(this.tentativeBlock);
+        this.tentativeSpan.textContent = text.trim();
+        this.onNewBlock(this.tentativeSpan);
     }
 
     _clearTentative() {
-        if (this.tentativeBlock) {
-            this.tentativeBlock.remove();
-            this.tentativeBlock = null;
+        if (this.tentativeSpan) {
+            this.tentativeSpan.remove();
+            this.tentativeSpan = null;
         }
     }
 
-    _ensureBlock(seq) {
+    _ensureSegment(seq) {
         if (this.segmentMap.has(seq)) return this.segmentMap.get(seq);
-        const block = document.createElement('div');
-        block.className = 'caption-block';
-        block.dataset.seq = seq;
-        const p = document.createElement('p');
-        p.className = 'block-text';
-        block.appendChild(p);
-        if (this.tentativeBlock) {
-            this.containerEl.insertBefore(block, this.tentativeBlock);
+        const span = document.createElement('span');
+        span.className = 'caption-segment';
+        span.dataset.seq = seq;
+        if (this.tentativeSpan) {
+            this.containerEl.insertBefore(span, this.tentativeSpan);
         } else {
-            this.containerEl.appendChild(block);
+            this.containerEl.appendChild(span);
         }
-        this.segmentMap.set(seq, block);
-        return block;
+        this.segmentMap.set(seq, span);
+        return span;
     }
 
-    _trimBlocks() {
+    _trimSegments() {
         while (this.segmentMap.size > this.maxBlocks) {
-            const [seq, block] = this.segmentMap.entries().next().value;
-            block.remove();
+            const [seq, span] = this.segmentMap.entries().next().value;
+            span.remove();
             this.segmentMap.delete(seq);
         }
     }
 
     _clearAll() {
         this._clearTentative();
-        for (const block of this.segmentMap.values()) block.remove();
+        for (const span of this.segmentMap.values()) span.remove();
         this.segmentMap.clear();
     }
 
