@@ -37,11 +37,11 @@ open http://localhost:8000/
 # Install dependencies
 pip install -e ".[dev]"
 
-# Run the server
+# Run the server (WLK must be running separately)
+CAMPTIONS_WLK_URL=ws://localhost:8000/asr \
+CAMPTIONS_ADMIN_TOKEN=dev \
+CAMPTIONS_INGEST_TOKEN=dev \
 uvicorn camptions.main:app --reload
-
-# Run tests
-pytest
 ```
 
 ## Architecture
@@ -62,23 +62,28 @@ pytest
 ## API Endpoints
 
 ### Audio Ingestion
-- `WebSocket /api/audio/ingest/{venue_id}` - Stream raw PCM audio (16kHz, 16-bit, mono)
+- `WebSocket /api/audio/ingest/{venue_id}?token=<INGEST_TOKEN>` — Stream raw PCM audio (16 kHz, 16-bit, mono). 🔒 ingest token required.
 
-### Caption Distribution
-- `WebSocket /api/captions/stream/{venue_id}` - Real-time caption stream
-- `GET /api/captions/stream/{venue_id}/sse` - Server-Sent Events stream
-- `GET /api/captions/history/{venue_id}` - Historical captions
+### Caption Distribution (public)
+- `WebSocket /api/captions/stream/{venue_id}` — Real-time caption stream
+- `GET /api/captions/stream/{venue_id}/sse` — Server-Sent Events stream
+- `GET /api/captions/history/{venue_id}` — Historical captions
 
 ### Venues
-- `GET /api/venues` - List all venues
-- `GET /api/venues/{venue_id}` - Get venue details
-- `POST /api/venues` - Create a venue
+- `GET /api/venues` — List all venues (public)
+- `GET /api/venues/{venue_id}` — Get venue details (public)
+- `POST /api/venues` — Create a venue 🔒
+- `PATCH /api/venues/{venue_id}` — Update a venue 🔒
 
-### Admin
-- `GET /api/admin/stats` - System statistics
-- `GET /api/admin/sessions` - List recent sessions
-- `POST /api/admin/init-venues` - Initialize default venues
-- `POST /api/admin/cleanup` - Clean up old data
+### Schedule
+- `GET /api/schedule/now-and-next` — Now/next talks for all venues
+- `GET /api/schedule/now-and-next/{venue_id}` — Now/next for one venue
+
+### Admin 🔒 (all require `Authorization: Bearer <ADMIN_TOKEN>`)
+- `GET /api/admin/stats` — System statistics
+- `GET /api/admin/sessions` — List recent sessions
+- `POST /api/admin/init-venues` — Initialize default venues
+- `POST /api/admin/cleanup` — Clean up old data
 
 ## Configuration
 
@@ -88,13 +93,15 @@ Environment variables (prefix with `CAMPTIONS_`):
 |----------|---------|-------------|
 | `HOST` | `0.0.0.0` | Server bind address |
 | `PORT` | `8000` | Server port |
+| `DEBUG` | `false` | Enable debug logging and SQLAlchemy echo |
 | `DATABASE_URL` | `sqlite+aiosqlite:///./camptions.db` | Database connection string |
-| `WHISPER_MODEL` | `medium` | Whisper model size |
-| `WHISPER_LANGUAGE` | `en` | Transcription language |
-| `WHISPER_BACKEND` | `auto` | Backend: auto, faster-whisper, whisper |
-| `ENABLE_VAD` | `true` | Enable voice activity detection |
-| `DEFAULT_VENUES` | `["stage-a", "stage-b", "stage-c"]` | Default venue IDs |
+| `WLK_URL` | `ws://wlk:8000/asr` | WhisperLiveKit WebSocket URL |
+| `ADMIN_TOKEN` | *(required)* | Bearer token for admin and venue-write endpoints |
+| `INGEST_TOKEN` | *(required)* | Token for Pi audio-ingest WebSocket (`?token=`) |
+| `DEFAULT_VENUES` | `["stage-a", "stage-b", "stage-c"]` | Default venue IDs created by `init-venues` |
 | `CAPTION_RETENTION_HOURS` | `72` | Hours to retain caption data |
+
+Generate tokens with: `python3 -c "import secrets; print(secrets.token_hex(32))"`
 
 ## Raspberry Pi Setup
 

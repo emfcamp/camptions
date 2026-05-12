@@ -4,7 +4,7 @@ import asyncio
 import contextlib
 import logging
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Awaitable, Callable, Optional
 
 import websockets
 
@@ -42,18 +42,34 @@ async def await_or_cancel(
 
 
 class WLKConnection:
-    """Owns a single WebSocket to WLK; shared between send and receive loops."""
+    """Owns a single WebSocket to WLK; shared between send and receive loops.
+
+    Optional `on_state_change(ready)` callback fires when the underlying WS
+    transitions to/from connected, so the owning session can reflect WLK
+    availability to caption subscribers.
+    """
 
     def __init__(self) -> None:
         self._ws: Optional[Any] = None
         self._lock = asyncio.Lock()
+        self.on_state_change: Optional[Callable[[bool], Awaitable[None]]] = None
 
     @property
     def ws(self) -> Optional[Any]:
         return self._ws
 
+    async def _fire(self, ready: bool) -> None:
+        cb = self.on_state_change
+        if cb is None:
+            return
+        try:
+            await cb(ready)
+        except Exception:
+            log.exception("WLK state-change callback failed")
+
     async def ensure(self, url: str, stop_event: asyncio.Event) -> Optional[Any]:
         """Return the current WS, or connect (with backoff) until stop fires."""
+        connected_ws: Optional[Any] = None
         async with self._lock:
             if self._ws is not None:
                 return self._ws
@@ -78,26 +94,38 @@ class WLKConnection:
                     continue
 
                 self._ws = ws
+                connected_ws = ws
                 log.info("WLK connected at %s", url)
-                return ws
+                break
 
+        if connected_ws is None:
             return None
+        await self._fire(True)
+        return connected_ws
 
     async def drop(self, ws: Any) -> None:
         """Discard `ws` if it's still the current connection and close it."""
+        dropped = False
         async with self._lock:
             if self._ws is ws:
                 self._ws = None
+                dropped = True
                 with contextlib.suppress(Exception):
                     await ws.close()
+        if dropped:
+            await self._fire(False)
 
     async def close(self) -> None:
         """Unconditionally close the current connection."""
+        closed = False
         async with self._lock:
             if self._ws is not None:
                 ws, self._ws = self._ws, None
+                closed = True
                 with contextlib.suppress(Exception):
                     await ws.close()
+        if closed:
+            await self._fire(False)
 
 
 @dataclass
@@ -110,13 +138,26 @@ class VenueSession:
     stop_event: asyncio.Event = field(default_factory=asyncio.Event)
     wlk: WLKConnection = field(default_factory=WLKConnection)
 
+    # Audio chunks dropped because the queue was full.
+    audio_drops: int = 0
+
+    # True while the WLK WebSocket is up. Combined with `Pi connected` (i.e.
+    # this session existing in the manager) to compute effective live state.
+    wlk_ready: bool = False
+
     # Monotonic per-session sequence counter — never resets across WLK reconnects.
     next_sequence: int = 1
 
-    # WLK's current line buffer (resets on each WLK reconnect).
-    wlk_lines: list = field(default_factory=list)
+    # Maps WLK line `start` timestamp → camptions sequence. WLK's diff
+    # protocol re-sends a whole line in `new_lines` when its text grows
+    # (SimulStreaming) and reports it as "pruned + new" rather than an
+    # in-place update, so positional tracking can't distinguish growth from
+    # a genuinely new line. Keying by `start` (stable for a line's lifetime)
+    # lets us reuse the same seq and have the client update the existing
+    # block instead of rendering a new one.
+    seq_by_start: dict[str, int] = field(default_factory=dict)
 
-    # Last tentative text broadcast (resets on each WLK reconnect).
+    # Last tentative text broadcast.
     last_tentative: str = ""
 
 

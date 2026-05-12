@@ -23,6 +23,14 @@ class Settings(BaseSettings):
 
     wlk_url: str = "ws://wlk:8000/asr"
 
+    @property
+    def wlk_url_full(self) -> str:
+        return self.wlk_url + "?mode=diff"
+
+    # Auth — required in production; unset means the protected endpoints will refuse all requests
+    admin_token: str = ""
+    ingest_token: str = ""
+
     # Venues
     default_venues: list[str] = ["stage-a", "stage-b", "stage-c"]
 

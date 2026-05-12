@@ -27,7 +27,7 @@ class AudioStreamer:
     async def _send_loop(self) -> None:
         chunks_total = 0
         venue = self.venue
-        url = self.settings.wlk_url + "?mode=diff"
+        url = self.settings.wlk_url_full
 
         while not venue.stop_event.is_set():
             ws = await venue.wlk.ensure(url, venue.stop_event)

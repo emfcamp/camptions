@@ -168,17 +168,24 @@ class CaptionClient:
         self,
         server_url: str,
         venue_id: str,
+        token: Optional[str] = None,
         session_title: Optional[str] = None,
     ):
         self.server_url = server_url
         self.venue_id = venue_id
+        self.token = token
         self.session_title = session_title
         self.ws = None
 
     async def connect(self) -> bool:
-        url = f"{self.server_url}/api/audio/ingest/{self.venue_id}"
+        params = []
+        if self.token:
+            params.append(f"token={self.token}")
         if self.session_title:
-            url += f"?session_title={self.session_title}"
+            params.append(f"session_title={self.session_title}")
+        url = f"{self.server_url}/api/audio/ingest/{self.venue_id}"
+        if params:
+            url += "?" + "&".join(params)
 
         print(f"Connecting to {url}...")
 
@@ -252,6 +259,7 @@ async def run_capture(
     server_url: str,
     venue_id: str,
     device: Optional[str] = None,
+    token: Optional[str] = None,
     session_title: Optional[str] = None,
 ):
     """Main capture loop.
@@ -262,7 +270,7 @@ async def run_capture(
       3. Tear both down and start over.
     """
     audio = AudioCapture(device)
-    client = CaptionClient(server_url, venue_id, session_title)
+    client = CaptionClient(server_url, venue_id, token=token, session_title=session_title)
 
     loop = asyncio.get_running_loop()
     stop_event = asyncio.Event()
@@ -350,6 +358,11 @@ def main():
         help="ALSA capture device, e.g. 'plughw:1,0' (default: auto-detect first USB mic)",
     )
     parser.add_argument(
+        "--token", "-k",
+        default=None,
+        help="Ingest authentication token (CAMPTIONS_INGEST_TOKEN on the server)",
+    )
+    parser.add_argument(
         "--title", "-t",
         default=None,
         help="Session title (optional)",
@@ -384,6 +397,7 @@ def main():
             server_url=args.server,
             venue_id=args.venue,
             device=args.device,
+            token=args.token,
             session_title=args.title,
         )
     )

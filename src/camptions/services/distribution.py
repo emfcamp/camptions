@@ -25,6 +25,7 @@ class DistributionManager:
     def __init__(self) -> None:
         self.venues: dict[str, VenueSubscribers] = {}
         self._lock = asyncio.Lock()
+        self._drops: dict[str, int] = {}  # venue_id -> total delivery drops
 
     async def subscribe(self, venue_id: str, websocket: WebSocket) -> None:
         """Subscribe a WebSocket client to venue captions."""
@@ -44,7 +45,7 @@ class DistributionManager:
         async with self._lock:
             if venue_id not in self.venues:
                 self.venues[venue_id] = VenueSubscribers()
-            queue: asyncio.Queue = asyncio.Queue()
+            queue: asyncio.Queue = asyncio.Queue(maxsize=100)
             self.venues[venue_id].sse_queues.append(queue)
             return queue
 
@@ -63,31 +64,41 @@ class DistributionManager:
         if subs is None or (not subs.websockets and not subs.sse_queues):
             return
 
-        dead_sockets: set[WebSocket] = set()
         message_json = json.dumps(message)
 
-        for websocket in subs.websockets:
-            try:
-                await websocket.send_text(message_json)
-            except Exception as e:
-                log.warning("[%s] dist: send failed (%s); dropping subscriber", venue_id, e)
-                dead_sockets.add(websocket)
+        # Fan out to all WebSocket subscribers concurrently.
+        if subs.websockets:
+            results = await asyncio.gather(
+                *[ws.send_text(message_json) for ws in subs.websockets],
+                return_exceptions=True,
+            )
+            dead_sockets = {
+                ws for ws, result in zip(subs.websockets, results)
+                if isinstance(result, Exception)
+            }
+            if dead_sockets:
+                n = len(dead_sockets)
+                log.warning("[%s] dist: %d WS send(s) failed; dropping subscribers", venue_id, n)
+                self._drops[venue_id] = self._drops.get(venue_id, 0) + n
+                async with self._lock:
+                    subs.websockets -= dead_sockets
 
         for queue in subs.sse_queues:
             try:
                 queue.put_nowait(message)
             except asyncio.QueueFull:
                 log.warning("[%s] dist: SSE queue full; dropping message", venue_id)
-
-        if dead_sockets:
-            async with self._lock:
-                subs.websockets -= dead_sockets
+                self._drops[venue_id] = self._drops.get(venue_id, 0) + 1
 
     def get_subscriber_count(self, venue_id: str) -> int:
         """Get total subscriber count for a venue."""
         if venue_id not in self.venues:
             return 0
         return len(self.venues[venue_id].websockets) + len(self.venues[venue_id].sse_queues)
+
+    def get_drop_counts(self) -> dict[str, int]:
+        """Return delivery drop counts keyed by venue_id."""
+        return dict(self._drops)
 
 
 # Global distribution manager instance

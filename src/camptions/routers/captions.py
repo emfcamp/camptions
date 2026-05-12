@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 
 from fastapi import APIRouter, Depends, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import StreamingResponse
@@ -37,14 +37,15 @@ async def caption_stream(websocket: WebSocket, venue_id: str) -> None:
     await distribution_manager.subscribe(venue_id, websocket)
 
     try:
-        # Send connection confirmation including current live status
-        is_live = _transcription_manager is not None and _transcription_manager.has_active_session(venue_id)
+        # Send connection confirmation including current live status.
+        # "Live" requires both Pi audio and WLK to be connected.
+        is_live = _transcription_manager is not None and _transcription_manager.is_live(venue_id)
         await websocket.send_json(
             {
                 "type": "connected",
                 "venue_id": venue_id,
                 "is_live": is_live,
-                "timestamp": datetime.utcnow().isoformat(),
+                "timestamp": datetime.now(UTC).isoformat(),
             }
         )
 
@@ -57,7 +58,7 @@ async def caption_stream(websocket: WebSocket, venue_id: str) -> None:
                     "venue_id": venue_id,
                     "now": schedule["now"],
                     "next": schedule["next"],
-                    "timestamp": datetime.utcnow().isoformat(),
+                    "timestamp": datetime.now(UTC).isoformat(),
                 }
             )
 

@@ -77,7 +77,7 @@ class TranscriptionProcessor:
     async def _recv_loop(self) -> None:
         msg_total = 0
         venue = self.venue
-        url = self.settings.wlk_url + "?mode=diff"
+        url = self.settings.wlk_url_full
 
         while not venue.stop_event.is_set():
             ws = await venue.wlk.ensure(url, venue.stop_event)
@@ -104,12 +104,14 @@ class TranscriptionProcessor:
                     if mtype == "ready_to_stop":
                         log.info("[%s] receiver: WLK ready_to_stop; reconnecting", venue.venue_id)
                         await venue.wlk.drop(ws)
+                        self._reset_wlk_state()
                         break
 
                     await self._broadcast(data)
 
                 log.info("[%s] receiver: WS closed by WLK; reconnecting", venue.venue_id)
                 await venue.wlk.drop(ws)
+                self._reset_wlk_state()
 
             except websockets.ConnectionClosed as e:
                 log.warning(
@@ -117,78 +119,46 @@ class TranscriptionProcessor:
                     venue.venue_id, e,
                 )
                 await venue.wlk.drop(ws)
+                self._reset_wlk_state()
             except Exception:
                 log.exception("[%s] receiver error; will reconnect", venue.venue_id)
                 await venue.wlk.drop(ws)
+                self._reset_wlk_state()
                 if await sleep_or_stop(venue.stop_event, 1):
                     break
 
         log.info("[%s] receiver exiting after %d messages", venue.venue_id, msg_total)
 
+    def _reset_wlk_state(self) -> None:
+        # WLK reconnect: the next message will be a fresh snapshot from a new
+        # WLK session whose internal `start` timestamps restart from zero, so
+        # clear the start→seq map to avoid colliding with prior-session keys.
+        self.venue.seq_by_start.clear()
+        self.venue.last_tentative = ""
+
     async def _broadcast(self, data: dict) -> None:
-        """Apply WLK snapshot/diff to venue state and fan out to subscribers."""
+        """Apply a WLK diff-mode update and fan out committed/tentative events.
+
+        Snapshot is treated as fresh state (clear the start→seq map). Diff's
+        `new_lines` is everything after the common prefix — WLK's protocol
+        re-sends a whole line when its text grows, so we identify lines by
+        their `start` timestamp rather than by position. A line whose `start`
+        we've already seen reuses its existing seq so the client updates the
+        existing block in place; an unseen `start` gets a fresh seq.
+        """
         venue = self.venue
-        msg_type = data.get("type")
+        mtype = data.get("type")
 
-        if msg_type == "snapshot":
-            lines_data = data.get("lines") or []
-            venue.wlk_lines = list(lines_data)
-            venue.last_tentative = ""
-
-            for line in lines_data:
-                text = (line.get("text") or "").strip()
-                if not text:
-                    continue
-                seq = venue.next_sequence
-                venue.next_sequence += 1
-                segment = self._make_segment(seq, text, line)
-                await distribution_manager.broadcast(venue.venue_id, segment)
-                await self._store(segment)
-
-            log.info(
-                "[%s] snapshot: %d lines, buffer=%r",
-                venue.venue_id, len(lines_data),
-                data.get("buffer_transcription", ""),
-            )
-
-        elif msg_type == "diff":
-            n_pruned = data.get("lines_pruned", 0)
-            if n_pruned > 0:
-                venue.wlk_lines = venue.wlk_lines[n_pruned:]
-
-            new_lines_data = data.get("new_lines") or []
-            for line in new_lines_data:
-                text = (line.get("text") or "").strip()
-                if not text:
-                    continue
-
-                seq = venue.next_sequence
-                venue.next_sequence += 1
-                venue.wlk_lines.append(line)
-
-                segment = self._make_segment(seq, text, line)
-                await distribution_manager.broadcast(venue.venue_id, segment)
-                await self._store(segment)
-
-            # Verify sync with WLK's expected line count.
-            n_lines = data.get("n_lines")
-            if n_lines is not None and len(venue.wlk_lines) != n_lines:
-                log.warning(
-                    "[%s] diff sync error: local %d lines but WLK expects %d; "
-                    "dropping connection to force re-sync via snapshot",
-                    venue.venue_id, len(venue.wlk_lines), n_lines,
-                )
-                await venue.wlk.drop(venue.wlk.ws)
-                return
-
-            log.info(
-                "[%s] diff: pruned %d, added %d, total %d, buffer=%r",
-                venue.venue_id, n_pruned, len(new_lines_data), len(venue.wlk_lines),
-                data.get("buffer_transcription", ""),
-            )
-
+        if mtype == "snapshot":
+            venue.seq_by_start.clear()
+            lines = data.get("lines") or []
+        elif mtype == "diff":
+            lines = data.get("new_lines") or []
         else:
             return
+
+        for line in lines:
+            await self._emit_line(line)
 
         buffer = (data.get("buffer_transcription") or "").strip()
         if buffer != venue.last_tentative:
@@ -204,6 +174,33 @@ class TranscriptionProcessor:
                     "timestamp": datetime.now(UTC).isoformat(),
                 },
             )
+
+    async def _emit_line(self, line: dict) -> None:
+        """Broadcast and persist one WLK line, keyed by `start` timestamp.
+
+        Re-use the existing seq if we've seen this `start` before (line is
+        growing in place) so the client updates its rendered block; otherwise
+        assign a fresh monotonic seq. Empty/silence lines (text is None or
+        blank) are skipped.
+        """
+        venue = self.venue
+        text = (line.get("text") or "").strip()
+        if not text:
+            return
+        start = line.get("start")
+        prior = venue.seq_by_start.get(start) if start else None
+        if prior is not None:
+            segment = self._make_segment(prior, text, line)
+            await distribution_manager.broadcast(venue.venue_id, segment)
+            await self._update_segment(segment)
+        else:
+            seq = venue.next_sequence
+            venue.next_sequence += 1
+            if start:
+                venue.seq_by_start[start] = seq
+            segment = self._make_segment(seq, text, line)
+            await distribution_manager.broadcast(venue.venue_id, segment)
+            await self._store(segment)
 
     def _make_segment(self, seq: int, text: str, line: dict) -> dict:
         return {
@@ -232,6 +229,15 @@ class TranscriptionProcessor:
                 )
             )
 
+    async def _update_segment(self, seg: dict) -> None:
+        async with get_db_session() as db:
+            await db.execute(
+                update(Segment)
+                .where(Segment.session_id == seg["session_id"])
+                .where(Segment.sequence == seg["sequence"])
+                .values(text=seg["text"], end_time=seg["end_time"])
+            )
+
 class TranscriptionManager:
     """Per-venue WLK bridge with independent send/receive loops."""
 
@@ -256,12 +262,48 @@ class TranscriptionManager:
 
         venue = VenueSession(venue_id=venue_id, session_id=session_id)
         self.venues[venue_id] = venue
+        venue.wlk.on_state_change = lambda ready: self._on_wlk_state_change(venue, ready)
         venue.streamer = AudioStreamer(venue, self.settings)
         venue.processor = TranscriptionProcessor(venue, self.settings)
         await venue.streamer.start()
         await venue.processor.start()
         log.info("[%s] session %s started", venue_id, session_id)
         return session_id
+
+    async def _on_wlk_state_change(self, venue: VenueSession, ready: bool) -> None:
+        """React to WLK socket coming up or going down.
+
+        Broadcasts venue_live / venue_offline so subscribers see "Live" only
+        when both Pi and WLK are connected. Skipped if the session has
+        already been ended (audio router will broadcast venue_offline itself).
+        """
+        venue.wlk_ready = ready
+        if self.venues.get(venue.venue_id) is not venue:
+            return
+        if ready:
+            await distribution_manager.broadcast(
+                venue.venue_id,
+                {
+                    "type": "venue_live",
+                    "venue_id": venue.venue_id,
+                    "session_id": venue.session_id,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                },
+            )
+        else:
+            await distribution_manager.broadcast(
+                venue.venue_id,
+                {
+                    "type": "venue_offline",
+                    "venue_id": venue.venue_id,
+                    "timestamp": datetime.now(UTC).isoformat(),
+                },
+            )
+
+    def is_live(self, venue_id: str) -> bool:
+        """True iff both Pi and WLK are currently connected for this venue."""
+        v = self.venues.get(venue_id)
+        return v is not None and v.wlk_ready
 
     async def end_session(self, venue_id: str) -> None:
         venue = self.venues.pop(venue_id, None)
@@ -303,6 +345,7 @@ class TranscriptionManager:
         try:
             venue.audio_queue.put_nowait(audio)
         except asyncio.QueueFull:
+            venue.audio_drops += 1
             log.warning("[%s] audio queue full, dropping %d bytes", venue_id, len(audio))
 
     def has_active_session(self, venue_id: str) -> bool:

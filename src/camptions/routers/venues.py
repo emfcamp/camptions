@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import require_admin
 from ..database import get_db
 from ..models import Venue
 from ..schemas import VenueCreate, VenueResponse
@@ -53,7 +54,7 @@ async def get_venue(
     }
 
 
-@router.post("")
+@router.post("", dependencies=[Depends(require_admin)])
 async def create_venue(
     venue: VenueCreate,
     db: AsyncSession = Depends(get_db),
@@ -76,7 +77,7 @@ async def create_venue(
     return VenueResponse.model_validate(db_venue)
 
 
-@router.patch("/{venue_id}")
+@router.patch("/{venue_id}", dependencies=[Depends(require_admin)])
 async def update_venue(
     venue_id: str,
     name: Optional[str] = None,

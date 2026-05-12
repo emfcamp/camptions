@@ -37,10 +37,6 @@
             font-family: 'Raleway', 'Trebuchet MS', 'Liberation Sans', 'Open Sans', sans-serif;
             font-weight: 400;
             min-height: 100vh;
-            height: 100vh;
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
         }
 
         body::before {
@@ -181,13 +177,10 @@
         }
 
         main {
-            flex: 1 1 auto;
             position: relative;
             z-index: 1;
             padding: 1rem;
-            padding-bottom: 10rem;
-            overflow-y: auto;
-            scroll-behavior: smooth;
+            padding-bottom: 6rem;
         }
 
         footer {
@@ -202,8 +195,6 @@
         #captionsInner {
             display: grid;
             gap: 0.75rem;
-            min-height: 100%;
-            align-items: end;
         }
 
         /* One block per WLK line */
@@ -449,9 +440,9 @@
         const emptyStateEl = document.getElementById('emptyState');
         const statusDotEl = document.getElementById('statusDot');
         const statusTextEl = document.getElementById('statusText');
-        const mainScrollEl = document.getElementById('mainScroll');
         const jumpBtn = document.getElementById('jumpToBottomBtn');
 
+        const SCROLL_BOTTOM_THRESHOLD = 80;  // px from bottom still considered "at bottom"
         let userScrolledUp = false;
         let fontSize = parseFloat(localStorage.getItem('fontSize')) || 1;
         let isDarkMode = localStorage.getItem('theme') !== 'light';
@@ -501,12 +492,17 @@
             `).join('');
         }
 
-        function isNearBottom(threshold = 150) {
-            return mainScrollEl.scrollHeight - mainScrollEl.scrollTop - mainScrollEl.clientHeight < threshold;
+        function isNearBottom() {
+            const remaining =
+                document.documentElement.scrollHeight - window.scrollY - window.innerHeight;
+            return remaining <= SCROLL_BOTTOM_THRESHOLD;
         }
 
-        function scrollToBottom() {
-            mainScrollEl.scrollTo({ top: mainScrollEl.scrollHeight, behavior: 'smooth' });
+        function scrollToBottom(behavior = 'smooth') {
+            window.scrollTo({
+                top: document.documentElement.scrollHeight,
+                behavior,
+            });
         }
 
         function onNewBlock() {
@@ -532,6 +528,7 @@
             document.getElementById('nowPlaying').style.display = 'none';
             userScrolledUp = false;
             jumpBtn.classList.add('hidden');
+            window.scrollTo({ top: 0, behavior: 'instant' });
 
             client = new CaptionsClient({
                 venue: currentVenue,
@@ -582,9 +579,14 @@
             if (v && v !== currentVenue) switchVenue(v, { skipPushState: true });
         });
 
-        mainScrollEl.addEventListener('scroll', () => {
-            userScrolledUp = !isNearBottom();
-            jumpBtn.classList.toggle('hidden', !userScrolledUp);
+        window.addEventListener('scroll', () => {
+            if (isNearBottom()) {
+                userScrolledUp = false;
+                jumpBtn.classList.add('hidden');
+            } else {
+                userScrolledUp = true;
+                jumpBtn.classList.remove('hidden');
+            }
         }, { passive: true });
 
         jumpBtn.addEventListener('click', () => {

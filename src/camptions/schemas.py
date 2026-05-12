@@ -80,59 +80,9 @@ class SegmentResponse(SegmentBase):
     created_at: datetime
 
 
-class SegmentBroadcast(BaseModel):
-    """Schema for segment broadcast messages."""
-
-    id: str
-    session_id: str
-    venue_id: str
-    sequence: int
-    type: Literal["tentative", "committed", "final"]
-    text: str
-    start_time: Optional[float] = None
-    end_time: Optional[float] = None
-    timestamp: str
-
-
 class CaptionHistoryResponse(BaseModel):
     """Schema for caption history response."""
 
     venue_id: str
     count: int
     segments: list[SegmentResponse]
-
-
-class WebSocketMessage(BaseModel):
-    """Base schema for WebSocket messages."""
-
-    type: str
-
-
-class SessionStartedMessage(WebSocketMessage):
-    """Message sent when a session starts."""
-
-    type: Literal["session_started"] = "session_started"
-    session_id: str
-    venue_id: str
-
-
-class SessionEndMessage(WebSocketMessage):
-    """Message sent when a session ends."""
-
-    type: Literal["session_end"] = "session_end"
-    session_id: str
-    timestamp: str
-
-
-class ConnectedMessage(WebSocketMessage):
-    """Message sent when a client connects."""
-
-    type: Literal["connected"] = "connected"
-    venue_id: str
-    timestamp: str
-
-
-class KeepaliveMessage(WebSocketMessage):
-    """Keepalive message."""
-
-    type: Literal["keepalive"] = "keepalive"

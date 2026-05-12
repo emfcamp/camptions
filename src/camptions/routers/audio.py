@@ -6,6 +6,7 @@ from datetime import UTC, datetime
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
 
+from ..auth import verify_ingest_token
 from ..services.distribution import distribution_manager
 
 log = logging.getLogger(__name__)
@@ -33,29 +34,29 @@ def get_transcription_manager():
 async def audio_ingest(
     websocket: WebSocket,
     venue_id: str,
+    token: str = Query(None),
     session_title: str = Query(None),
 ) -> None:
     """
     WebSocket endpoint for audio ingestion from Raspberry Pi.
 
-    Expects raw PCM audio: 44.1 kHz, 16-bit signed, mono (s16le).
+    Expects raw PCM audio: 16 kHz, 16-bit signed, mono (s16le).
+    Requires ?token=<CAMPTIONS_INGEST_TOKEN> query parameter.
     """
+    try:
+        verify_ingest_token(token)
+    except Exception:
+        await websocket.close(code=4401)
+        return
+
     peer = f"{websocket.client.host}:{websocket.client.port}" if websocket.client else "?"
     await websocket.accept()
     log.info("[%s] Pi WS accepted from %s", venue_id, peer)
 
     transcription_manager = get_transcription_manager()
     session_id = await transcription_manager.start_session(venue_id, session_title)
-
-    await distribution_manager.broadcast(
-        venue_id,
-        {
-            "type": "venue_live",
-            "venue_id": venue_id,
-            "session_id": session_id,
-            "timestamp": datetime.now(UTC).isoformat(),
-        },
-    )
+    # venue_live is broadcast by TranscriptionManager once WLK actually
+    # connects — viewers only show "Live" when captions can be produced.
 
     chunks = 0
     bytes_in = 0

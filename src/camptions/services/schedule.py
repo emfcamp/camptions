@@ -19,6 +19,7 @@ def _parse_talk(talk: dict[str, Any]) -> dict[str, Any]:
     """Extract relevant fields from a talk object."""
     return {
         "title": talk.get("title", ""),
+        "speaker": talk.get("speaker", ""),
         "start_time": talk.get("start_time", ""),
         "end_time": talk.get("end_time", ""),
         "description": talk.get("description", ""),

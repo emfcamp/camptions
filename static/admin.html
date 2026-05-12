@@ -16,8 +16,8 @@
         }
 
         :root {
-            --bg-color: #000730;
-            --surface-color: #001a4d;
+            --bg-color: #000000;
+            --surface-color: rgba(255,255,255,0.08);
             --text-color: #ffffff;
             --text-muted: #a8b3d4;
             --accent-color: #F77F02;
@@ -27,6 +27,7 @@
         }
 
         body {
+            position: relative;
             background: var(--bg-color);
             color: var(--text-color);
             font-family: 'Raleway', 'Trebuchet MS', 'Liberation Sans', 'Open Sans', sans-serif;
@@ -35,7 +36,21 @@
             padding: 2rem;
         }
 
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: url('/static/bg-2.png');
+            background-size: cover;
+            background-position: center;
+            opacity: 0.1;
+            pointer-events: none;
+            z-index: 0;
+        }
+
         .container {
+            position: relative;
+            z-index: 1;
             max-width: 1200px;
             margin: 0 auto;
         }
@@ -121,7 +136,7 @@
             align-items: center;
             padding: 0.75rem;
             margin-bottom: 0.5rem;
-            background: var(--bg-color);
+            background: rgba(255,255,255,0.05);
             border-radius: 0.25rem;
         }
 
@@ -194,7 +209,7 @@
         .session-item {
             padding: 0.75rem;
             margin-bottom: 0.5rem;
-            background: var(--bg-color);
+            background: rgba(255,255,255,0.05);
             border-radius: 0.25rem;
         }
 
@@ -212,6 +227,27 @@
             font-size: 0.75rem;
             color: var(--text-muted);
             margin-top: 0.5rem;
+        }
+
+        .json-link {
+            font-size: 0.7rem;
+            font-weight: 400;
+            color: var(--text-muted);
+            margin-left: 0.5rem;
+            text-decoration: none;
+            opacity: 0.7;
+        }
+
+        .json-link:hover {
+            opacity: 1;
+        }
+
+        .drop-warn {
+            color: var(--warning-color);
+        }
+
+        .stat-ok {
+            color: var(--success-color);
         }
 
         .alert {
@@ -266,7 +302,7 @@
 
         <div class="grid">
             <div class="card">
-                <h2>System Stats</h2>
+                <h2>System Stats <a href="/api/admin/stats" target="_blank" class="json-link" title="Open raw JSON">↗ JSON</a></h2>
                 <div id="stats">
                     <div class="stat">
                         <span>Total Venues</span>
@@ -284,8 +320,16 @@
                         <span>Connected Viewers</span>
                         <span class="stat-value" id="statViewers">-</span>
                     </div>
+                    <div class="stat">
+                        <span>Dropped (audio queue)</span>
+                        <span class="stat-value" id="statDropAudio">-</span>
+                    </div>
+                    <div class="stat">
+                        <span>Dropped (delivery)</span>
+                        <span class="stat-value" id="statDropDist">-</span>
+                    </div>
                 </div>
-                <div class="refresh-indicator">Auto-refreshes every 5s</div>
+                <div class="refresh-indicator">Auto-refreshes every 5s · drops reset on restart</div>
             </div>
 
             <div class="card">
@@ -318,6 +362,20 @@
     </div>
 
     <script>
+        let adminToken = localStorage.getItem('adminToken') || '';
+
+        function getToken() {
+            if (!adminToken) {
+                adminToken = prompt('Enter admin token:') || '';
+                if (adminToken) localStorage.setItem('adminToken', adminToken);
+            }
+            return adminToken;
+        }
+
+        function authHeaders() {
+            return { 'Authorization': `Bearer ${getToken()}` };
+        }
+
         function showAlert(message, type = 'success') {
             const container = document.getElementById('alertContainer');
             const alert = document.createElement('div');
@@ -336,6 +394,15 @@
                 document.getElementById('statLiveVenues').textContent = data.venues.active;
                 document.getElementById('statSegments').textContent = data.segments.total;
                 document.getElementById('statViewers').textContent = data.subscribers.total;
+
+                const audioDrops = Object.values(data.drops?.audio_queue ?? {}).reduce((a, b) => a + b, 0);
+                const distDrops = Object.values(data.drops?.distribution ?? {}).reduce((a, b) => a + b, 0);
+                const audioEl = document.getElementById('statDropAudio');
+                const distEl = document.getElementById('statDropDist');
+                audioEl.textContent = audioDrops;
+                audioEl.className = 'stat-value' + (audioDrops > 0 ? ' drop-warn' : ' stat-ok');
+                distEl.textContent = distDrops;
+                distEl.className = 'stat-value' + (distDrops > 0 ? ' drop-warn' : ' stat-ok');
             } catch (e) {
                 console.error('Failed to load stats:', e);
             }
@@ -345,7 +412,7 @@
             try {
                 const [venuesRes, statsRes] = await Promise.all([
                     fetch('/api/venues?active_only=false'),
-                    fetch('/api/admin/stats')
+                    fetch('/api/admin/stats', { headers: authHeaders() })
                 ]);
 
                 const venues = await venuesRes.json();
@@ -367,7 +434,7 @@
 
         async function loadSessions() {
             try {
-                const response = await fetch('/api/admin/sessions?limit=10');
+                const response = await fetch('/api/admin/sessions?limit=10', { headers: authHeaders() });
                 const data = await response.json();
 
                 document.getElementById('sessionList').innerHTML = data.sessions.map(s => `
@@ -389,7 +456,7 @@
 
         async function initVenues() {
             try {
-                const response = await fetch('/api/admin/init-venues', { method: 'POST' });
+                const response = await fetch('/api/admin/init-venues', { method: 'POST', headers: authHeaders() });
 
                 if (response.ok) {
                     const data = await response.json();
@@ -407,7 +474,7 @@
             if (!confirm('This will delete old caption data. Continue?')) return;
 
             try {
-                const response = await fetch('/api/admin/cleanup', { method: 'POST' });
+                const response = await fetch('/api/admin/cleanup', { method: 'POST', headers: authHeaders() });
 
                 if (response.ok) {
                     const data = await response.json();

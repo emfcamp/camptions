@@ -12,8 +12,6 @@ RUN mkdir -p src/camptions && touch src/camptions/__init__.py \
 # Copy source — only these layers re-run on src/ changes.
 COPY src/ src/
 COPY static/ static/
-COPY alembic/ alembic/
-COPY alembic.ini .
 RUN pip install --no-cache-dir --no-deps .
 
 RUN mkdir -p /app/data

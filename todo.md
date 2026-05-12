@@ -1,4 +1,3 @@
-- swap back to whisperlivekit
-- viewer smooth scrolling and bottom button
-- authentication (admin and streaming connections)
-- does this work at scale? i.e. 1000 connections
+- set CAMPTIONS_ADMIN_TOKEN and CAMPTIONS_INGEST_TOKEN in .env and Pi config.env before deploying
+- configure CAMPTIONS_TOKEN on each Pi's /opt/camptions/config.env
+- consider multi-worker + Redis pub-sub if 1000 connections per venue is needed (current fix handles sequential broadcast; single worker ceiling ~1000 total)

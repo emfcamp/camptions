@@ -268,7 +268,8 @@
             const available = captionsViewport.clientHeight;
             const contentHeight = captionsInner.scrollHeight;
             if (contentHeight > available) {
-                captionsInner.style.transform = `translateY(${available - contentHeight}px)`;
+                const lineHeight = parseFloat(getComputedStyle(document.body).lineHeight);
+                captionsInner.style.transform = `translateY(${available - contentHeight - 2 * lineHeight}px)`;
             }
         }
 

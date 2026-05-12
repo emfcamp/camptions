@@ -7,6 +7,7 @@ from fastapi import APIRouter, Depends, Query
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from ..auth import require_admin
 from ..config import settings
 from ..database import get_db
 from ..models import Segment, Session, Venue
@@ -31,7 +32,7 @@ def get_transcription_manager():
     return _transcription_manager
 
 
-@router.get("/sessions")
+@router.get("/sessions", dependencies=[Depends(require_admin)])
 async def list_sessions(
     venue_id: Optional[str] = None,
     active_only: bool = False,
@@ -82,6 +83,18 @@ async def get_stats(db: AsyncSession = Depends(get_db)) -> dict:
         distribution_manager.get_subscriber_count(v) for v in active_venues
     )
 
+    audio_drops = {
+        venue_id: v.audio_drops
+        for venue_id, v in transcription_manager.venues.items()
+        if v.audio_drops > 0
+    }
+    dist_drops = {
+        venue_id: count
+        for venue_id, count in distribution_manager.get_drop_counts().items()
+        if count > 0
+    }
+    total_drops = sum(audio_drops.values()) + sum(dist_drops.values())
+
     return {
         "venues": {
             "total": venue_count,
@@ -97,10 +110,15 @@ async def get_stats(db: AsyncSession = Depends(get_db)) -> dict:
         "subscribers": {
             "total": total_subscribers,
         },
+        "drops": {
+            "total": total_drops,
+            "audio_queue": audio_drops,
+            "distribution": dist_drops,
+        },
     }
 
 
-@router.post("/cleanup")
+@router.post("/cleanup", dependencies=[Depends(require_admin)])
 async def cleanup_old_data(
     retention_hours: int = Query(None),
     db: AsyncSession = Depends(get_db),
@@ -133,7 +151,7 @@ async def cleanup_old_data(
     }
 
 
-@router.post("/init-venues")
+@router.post("/init-venues", dependencies=[Depends(require_admin)])
 async def init_default_venues(db: AsyncSession = Depends(get_db)) -> dict:
     """Initialize default venues from configuration."""
     created = []

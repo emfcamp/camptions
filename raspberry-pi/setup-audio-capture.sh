@@ -41,11 +41,8 @@ echo "[1/5] Refreshing apt index..."
 apt-get update
 
 echo "[2/5] Installing dependencies..."
-# pyaudio + websockets come from apt as prebuilt binaries — much faster on a Pi
-# than pip-compiling pyaudio against portaudio19-dev.
 apt-get install -y --no-install-recommends \
     python3 \
-    python3-pyaudio \
     python3-websockets \
     alsa-utils
 
@@ -84,7 +81,8 @@ WorkingDirectory=$CAMPTIONS_DIR
 EnvironmentFile=$CAMPTIONS_DIR/config.env
 ExecStart=/usr/bin/python3 $CAMPTIONS_DIR/capture_client.py \\
     --server "\${CAMPTIONS_SERVER}" \\
-    --venue "\${CAMPTIONS_VENUE}"
+    --venue "\${CAMPTIONS_VENUE}" \\
+    \${CAMPTIONS_TOKEN:+--token "\${CAMPTIONS_TOKEN}"}
 Restart=always
 RestartSec=10
 
@@ -108,7 +106,10 @@ CAMPTIONS_SERVER=$CAMPTIONS_SERVER
 # Venue ID
 CAMPTIONS_VENUE=$CAMPTIONS_VENUE
 
-# Audio device index (leave empty for default)
+# Ingest authentication token — must match CAMPTIONS_INGEST_TOKEN on the server
+CAMPTIONS_TOKEN=
+
+# Audio device (leave empty for auto-detect)
 # Run 'camptions-list-devices' to see available devices
 CAMPTIONS_DEVICE=
 EOF
@@ -129,6 +130,7 @@ source $CAMPTIONS_DIR/config.env
 sudo -u $RUN_USER /usr/bin/python3 $CAMPTIONS_DIR/capture_client.py \\
     --server "\$CAMPTIONS_SERVER" \\
     --venue "\$CAMPTIONS_VENUE" \\
+    \${CAMPTIONS_TOKEN:+--token "\$CAMPTIONS_TOKEN"} \\
     \${CAMPTIONS_DEVICE:+--device "\$CAMPTIONS_DEVICE"}
 EOF
 chmod +x /usr/local/bin/camptions-test
