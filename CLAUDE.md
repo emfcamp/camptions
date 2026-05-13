@@ -37,14 +37,39 @@ The send loop proactively reconnects every `CAMPTIONS_WL_RECONNECT_INTERVAL` sec
 
 | Type | Meaning |
 |------|---------|
-| `connected` | Initial handshake; includes `is_live` bool |
-| `venue_live` | Pi audio is streaming AND WL is handshaked |
+| `connected` | Initial handshake; includes `session_id`, `is_live`, `transcription_enabled` |
+| `venue_live` | Pi audio is streaming AND WL is handshaked; includes `session_id` |
 | `venue_offline` | Pi or WL is not currently available |
-| `tentative` | In-progress transcription (may change) |
-| `committed` | Final transcription segment |
+| `tentative` | In-progress transcription (may change); includes `session_id` |
+| `committed` | Final transcription segment; includes `session_id`, `sequence` |
+| `transcription_disabled` | Admin paused transcription for this venue |
+| `transcription_enabled` | Admin re-enabled transcription |
 | `keepalive` | 30 s ping to keep connection alive |
 | `schedule_update` | Now/next talk info from EMF schedule API |
-| `session_end` | Active session has ended |
+| `session_end` | Active session has ended; includes `session_id` |
+
+Committed segments are uniquely identified by `(session_id, sequence)` —
+sequence resets to 1 per session. Use the pair to dedupe across reconnects.
+
+## Public API & docs
+
+`/docs` (Swagger UI) is the canonical reference for the public HTTP/WS API.
+The `audio` and `admin` routers are explicitly `include_in_schema=False` so
+only the public surface is documented:
+
+- `GET /api/captions/history/{venue_id}` — cursor-paginated segment list with
+  `since`/`until`/`session_id`/`order` filters.
+- `WS /api/captions/stream/{venue_id}` and `GET /api/captions/stream/{venue_id}/sse`
+  — same JSON message catalogue, two transports.
+- `GET /api/venues`, `GET /api/venues/{id}` — public venue metadata.
+- `GET /api/sessions`, `GET /api/sessions/{id}` — public session list.
+- `GET /api/schedule/now-and-next[/{venue_id}]` — cached EMF schedule.
+
+Response shapes are pinned to Pydantic models in [schemas.py](src/camptions/schemas.py)
+(`PublicSegment`, `PublicSegmentsResponse`, `PublicSession`,
+`PublicSessionsResponse`, `NowAndNext`, `ScheduleSlot`). The full WS message
+catalogue is documented in the `caption_stream` route docstring (rendered in
+Swagger).
 
 ## Source layout
 
@@ -56,10 +81,11 @@ src/camptions/
 ├── database.py          # Async SQLite engine, session factory
 ├── schemas.py           # Pydantic request/response schemas
 ├── routers/
-│   ├── audio.py         # WS /api/audio/ingest — Pi audio ingest
-│   ├── captions.py      # WS /api/captions/stream, SSE, history
-│   ├── venues.py        # CRUD for venues
-│   ├── admin.py         # Stats, session list, cleanup, init-venues
+│   ├── audio.py         # WS /api/audio/ingest — Pi audio ingest (internal, hidden from /docs)
+│   ├── captions.py      # WS /api/captions/stream, SSE, cursor-paginated /history
+│   ├── venues.py        # CRUD for venues (CRUD ops admin-gated)
+│   ├── sessions.py      # Public session list + lookup
+│   ├── admin.py         # Stats, session list, cleanup, init-venues (hidden from /docs)
 │   └── schedule.py      # GET /api/schedule/now-and-next
 └── services/
     ├── transcription.py # TranscriptionManager + TranscriptionProcessor

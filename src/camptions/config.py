@@ -40,5 +40,13 @@ class Settings(BaseSettings):
     # Retention
     caption_retention_hours: int = 72
 
+    # Public-API rate limits (per client IP, sliding window).
+    # Applies to /api/captions/*, /api/venues/*, /api/sessions/*, /api/schedule/*.
+    # Set to 0 to disable. The Pi audio ingest and admin endpoints are NOT
+    # rate-limited — admin is token-protected and the Pi is on a known LAN.
+    rate_limit_per_minute: int = 120
+    # Simultaneous WebSocket connections per IP across all venues.
+    ws_connections_per_ip: int = 10
+
 
 settings = Settings()

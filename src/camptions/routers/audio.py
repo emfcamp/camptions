@@ -5,8 +5,11 @@ import time
 from datetime import UTC, datetime
 
 from fastapi import APIRouter, Query, WebSocket, WebSocketDisconnect
+from sqlalchemy import select
 
 from ..auth import verify_ingest_token
+from ..database import get_db_session
+from ..models import Venue
 from ..services.distribution import distribution_manager
 
 log = logging.getLogger(__name__)
@@ -54,10 +57,29 @@ async def audio_ingest(
     log.info("[%s] Pi WS accepted from %s", venue_id, peer)
 
     transcription_manager = get_transcription_manager()
-    session_id = await transcription_manager.start_session(venue_id, session_title)
-    # venue_live is broadcast by TranscriptionManager once WL actually
-    # connects and handshakes — viewers only show "Live" when captions can
-    # be produced.
+
+    # Honor the per-venue transcription toggle. When disabled at connect, we
+    # still accept the WS so the Pi doesn't churn through reconnects; we
+    # just drain bytes and skip session creation. The viewer/display see
+    # `transcription_disabled` and render a "paused" banner.
+    transcription_enabled = await _venue_transcription_enabled(venue_id)
+
+    session_id: str | None = None
+    if transcription_enabled:
+        session_id = await transcription_manager.start_session(venue_id, session_title)
+        # venue_live is broadcast by TranscriptionManager once WL actually
+        # connects and handshakes — viewers only show "Live" when captions
+        # can be produced.
+    else:
+        log.info("[%s] transcription disabled for venue; draining audio", venue_id)
+        await distribution_manager.broadcast(
+            venue_id,
+            {
+                "type": "transcription_disabled",
+                "venue_id": venue_id,
+                "timestamp": datetime.now(UTC).isoformat(),
+            },
+        )
 
     chunks = 0
     bytes_in = 0
@@ -65,11 +87,16 @@ async def audio_ingest(
     t_first_chunk: float | None = None
 
     try:
+        # Always reply with `session_started` — the Pi client expects this
+        # type as its connection handshake. When paused, session_id is null
+        # and process_audio is skipped below; the `transcription_disabled`
+        # signal goes to viewers via distribution_manager, not the Pi.
         await websocket.send_json(
             {
                 "type": "session_started",
                 "session_id": session_id,
                 "venue_id": venue_id,
+                "transcription_enabled": session_id is not None,
             }
         )
 
@@ -83,7 +110,10 @@ async def audio_ingest(
                     "[%s] first audio chunk: %d bytes, %.0f ms after accept",
                     venue_id, len(audio_data), (t_first_chunk - t_open) * 1000,
                 )
-            await transcription_manager.process_audio(venue_id, audio_data)
+            if session_id is not None:
+                # process_audio is a no-op when the session has been ended
+                # (e.g. admin disabled transcription mid-stream).
+                await transcription_manager.process_audio(venue_id, audio_data)
 
     except WebSocketDisconnect as e:
         elapsed_ms = (time.monotonic() - t_open) * 1000
@@ -95,7 +125,8 @@ async def audio_ingest(
     except Exception:
         log.exception("[%s] Pi ingest error", venue_id)
     finally:
-        await transcription_manager.end_session(venue_id)
+        if session_id is not None:
+            await transcription_manager.end_session(venue_id)
         await distribution_manager.broadcast(
             venue_id,
             {
@@ -104,3 +135,20 @@ async def audio_ingest(
                 "timestamp": datetime.now(UTC).isoformat(),
             },
         )
+
+
+async def _venue_transcription_enabled(venue_id: str) -> bool:
+    """Return whether transcription is enabled for `venue_id`.
+
+    Defaults to True when the venue row is missing — the audio ingest path
+    historically auto-created sessions for unknown venues, so we don't want
+    a missing row to silently swallow audio.
+    """
+    async with get_db_session() as db:
+        row = await db.execute(
+            select(Venue.transcription_enabled).where(Venue.id == venue_id)
+        )
+        flag = row.scalar_one_or_none()
+    if flag is None:
+        return True
+    return bool(flag)

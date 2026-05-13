@@ -36,7 +36,11 @@
             color: var(--text-color);
             font-family: 'Raleway', 'Trebuchet MS', 'Liberation Sans', 'Open Sans', sans-serif;
             font-weight: 400;
-            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+            height: 100dvh;
+            overflow: hidden;
         }
 
         body::before {
@@ -65,8 +69,8 @@
             align-items: center;
             justify-content: space-between;
             border-bottom: 1px solid rgba(255,255,255,0.1);
-            position: sticky;
-            top: 0;
+            flex: none;
+            position: relative;
             z-index: 100;
         }
 
@@ -126,6 +130,10 @@
             animation: pulse 1s infinite;
         }
 
+        .status-dot.paused {
+            background: var(--warning-color);
+        }
+
         @keyframes pulse {
             0%, 100% { opacity: 1; }
             50% { opacity: 0.4; }
@@ -135,8 +143,8 @@
             background: var(--surface-color);
             padding: 1rem;
             border-bottom: 1px solid rgba(255,255,255,0.1);
-            position: sticky;
-            top: 4.75rem;
+            flex: none;
+            position: relative;
             z-index: 90;
         }
 
@@ -177,18 +185,25 @@
         }
 
         main {
+            flex: 1 1 0;
+            min-height: 0;
+            overflow-y: auto;
+            -webkit-overflow-scrolling: touch;
+            position: relative;
             z-index: 1;
-            padding: 7rem 1rem 5rem;
+            /* Generous bottom padding so the most recent line stays visible
+               above the footer / jump-to-bottom button while the user
+               scrolls up to read history. Mirrors display.html's 6rem
+               bottom margin. */
+            padding: 1rem 1rem 10rem;
         }
 
         footer {
             background: var(--surface-color);
             padding: 1rem;
             border-top: 1px solid rgba(255,255,255,0.1);
-            position: fixed;
-            bottom: 0;
-            left: 0;
-            right: 0;
+            flex: none;
+            position: relative;
             z-index: 100;
         }
 
@@ -244,6 +259,31 @@
             border: 1px solid var(--text-muted);
             color: var(--text-color);
             cursor: pointer;
+        }
+
+        /* Transcription paused banner — pinned above the footer */
+        .paused-banner {
+            background: rgba(249, 226, 0, 0.12);
+            border-top: 1px solid var(--warning-color);
+            border-bottom: 1px solid var(--warning-color);
+            padding: 0.75rem 1rem;
+            color: var(--warning-color);
+            font-weight: 600;
+            text-align: center;
+            flex: none;
+            position: relative;
+            z-index: 95;
+        }
+
+        .paused-banner[hidden] {
+            display: none;
+        }
+
+        .paused-banner .paused-detail {
+            color: var(--text-muted);
+            font-weight: 400;
+            font-size: 0.8rem;
+            margin-top: 0.25rem;
         }
 
         /* Now playing banner */
@@ -400,6 +440,11 @@
         <button id="jumpToBottomBtn" class="hidden" title="Jump to latest">↓</button>
     </main>
 
+    <div id="pausedBanner" class="paused-banner" hidden>
+        Transcription paused for this venue
+        <div class="paused-detail">Previous captions remain visible. New captions will resume when transcription is re-enabled.</div>
+    </div>
+
     <footer>
         <div class="settings">
             <div class="font-controls">
@@ -424,6 +469,8 @@
         const emptyStateEl = document.getElementById('emptyState');
         const statusDotEl = document.getElementById('statusDot');
         const statusTextEl = document.getElementById('statusText');
+        const mainScrollEl = document.getElementById('mainScroll');
+        const pausedBannerEl = document.getElementById('pausedBanner');
         const jumpBtn = document.getElementById('jumpToBottomBtn');
 
         const SCROLL_BOTTOM_THRESHOLD = 80;  // px from bottom still considered "at bottom"
@@ -478,20 +525,53 @@
 
         function isNearBottom() {
             const remaining =
-                document.documentElement.scrollHeight - window.scrollY - window.innerHeight;
+                mainScrollEl.scrollHeight - mainScrollEl.scrollTop - mainScrollEl.clientHeight;
             return remaining <= SCROLL_BOTTOM_THRESHOLD;
         }
 
-        function scrollToBottom(behavior = 'smooth') {
-            window.scrollTo({
-                top: document.documentElement.scrollHeight,
-                behavior,
-            });
+        // Custom requestAnimationFrame-based smooth scroll. Mirrors the
+        // 3 s ease-out feel of display.html (which uses CSS transitions on
+        // a translateY transform). Native `scroll-behavior: smooth` is
+        // browser-controlled and too fast for the relaxed live-captions
+        // feel, so we drive scrollTop ourselves.
+        const SMOOTH_SCROLL_DURATION_MS = 3000;
+        let smoothScrollRAF = null;
+        function cancelSmoothScroll() {
+            if (smoothScrollRAF !== null) {
+                cancelAnimationFrame(smoothScrollRAF);
+                smoothScrollRAF = null;
+            }
         }
+        function smoothScrollToBottom(durationMs = SMOOTH_SCROLL_DURATION_MS) {
+            cancelSmoothScroll();
+            const from = mainScrollEl.scrollTop;
+            const to = mainScrollEl.scrollHeight - mainScrollEl.clientHeight;
+            if (to <= from + 1) return;
+            if (durationMs <= 0) {
+                mainScrollEl.scrollTop = to;
+                return;
+            }
+            const start = performance.now();
+            const step = now => {
+                const t = Math.min(1, (now - start) / durationMs);
+                const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
+                mainScrollEl.scrollTop = from + (to - from) * eased;
+                if (t < 1) smoothScrollRAF = requestAnimationFrame(step);
+                else smoothScrollRAF = null;
+            };
+            smoothScrollRAF = requestAnimationFrame(step);
+        }
+
+        // User input cancels any in-flight auto-scroll so we don't fight
+        // their gesture. The scroll listener below still updates
+        // userScrolledUp / the jump button.
+        ['wheel', 'touchstart', 'pointerdown', 'keydown'].forEach(evt => {
+            mainScrollEl.addEventListener(evt, cancelSmoothScroll, { passive: true });
+        });
 
         function onNewBlock() {
             emptyStateEl.style.display = 'none';
-            if (!userScrolledUp) scrollToBottom();
+            if (!userScrolledUp) smoothScrollToBottom();
         }
 
         function switchVenue(venueId, { skipPushState = false } = {}) {
@@ -512,7 +592,10 @@
             document.getElementById('nowPlaying').style.display = 'none';
             userScrolledUp = false;
             jumpBtn.classList.add('hidden');
-            window.scrollTo({ top: 0, behavior: 'instant' });
+            cancelSmoothScroll();
+            mainScrollEl.scrollTo({ top: 0, behavior: 'instant' });
+
+            pausedBannerEl.hidden = true;
 
             client = new CaptionsClient({
                 venue: currentVenue,
@@ -526,6 +609,9 @@
                     userScrolledUp = false;
                 },
                 onSessionEnd() {},
+                onPausedChange(paused) {
+                    pausedBannerEl.hidden = !paused;
+                },
                 onScheduleUpdate(data) {
                     const nowPlaying = document.getElementById('nowPlaying');
                     const nextTalk = document.getElementById('nextTalk');
@@ -549,6 +635,18 @@
                     nowPlaying.style.display = 'block';
                 },
                 onNewBlock,
+                onTrim(delta) {
+                    // Front segments were evicted and the container shrank
+                    // by `delta` px. Without compensation the browser leaves
+                    // scrollTop unchanged, so the visible content snaps
+                    // upward. Pulling scrollTop down by the same amount
+                    // keeps the visible content stable; the subsequent
+                    // smoothScrollToBottom (from onNewBlock) then animates
+                    // from this corrected position.
+                    if (delta <= 0) return;
+                    cancelSmoothScroll();
+                    mainScrollEl.scrollTop = Math.max(0, mainScrollEl.scrollTop - delta);
+                },
             });
             client.init();
         }
@@ -563,7 +661,7 @@
             if (v && v !== currentVenue) switchVenue(v, { skipPushState: true });
         });
 
-        window.addEventListener('scroll', () => {
+        mainScrollEl.addEventListener('scroll', () => {
             if (isNearBottom()) {
                 userScrolledUp = false;
                 jumpBtn.classList.add('hidden');
@@ -575,7 +673,9 @@
 
         jumpBtn.addEventListener('click', () => {
             userScrolledUp = false;
-            scrollToBottom();
+            // The jump button is a deliberate snap — half a second is brisk
+            // enough to feel like a snap-to-bottom but still tracks.
+            smoothScrollToBottom(500);
             jumpBtn.classList.add('hidden');
         });
 

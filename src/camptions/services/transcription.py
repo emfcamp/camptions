@@ -343,7 +343,10 @@ class TranscriptionManager:
     async def process_audio(self, venue_id: str, audio: bytes) -> None:
         venue = self.venues.get(venue_id)
         if venue is None:
-            raise ValueError(f"No active session for venue: {venue_id}")
+            # No active session: silently discard. Happens transiently while
+            # admin toggles transcription off mid-stream, or if the Pi sends
+            # a chunk after end_session(). Not an error.
+            return
         try:
             venue.audio_queue.put_nowait(audio)
         except asyncio.QueueFull:

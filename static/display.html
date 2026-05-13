@@ -95,11 +95,34 @@
         #status.live        { background: #2AE28C; color: #000730; }
         #status.offline     { background: #5a6580; color: #fff; }
         #status.disconnected { background: #F5515E; color: #fff; }
+        #status.paused      { background: #F9E200; color: #000730; }
         #status.reconnecting {
             background: #F9E200;
             color: #000730;
             animation: pulse 1s infinite;
         }
+
+        /* Paused banner — large, centred between the brand mark and QR
+           code at the bottom of the display. Sits above the caption area
+           and is visually unmissable. */
+        #pausedBanner {
+            position: fixed;
+            bottom: 1.5rem;
+            left: 50%;
+            transform: translateX(-50%);
+            color: #F9E200;
+            font-size: 2.5vw;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            text-align: center;
+            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+            z-index: 95;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+
+        #pausedBanner[hidden] { display: none; }
 
         @keyframes pulse {
             0%, 100% { opacity: 1; }
@@ -207,6 +230,7 @@
         <span class="talk-next" id="talkNext"></span>
     </div>
     <div id="status" class="disconnected">Connecting...</div>
+    <div id="pausedBanner" hidden>Transcription paused</div>
     <div id="captions" role="region" aria-live="polite" aria-label="Live captions">
         <div id="captionsInner"></div>
     </div>
@@ -256,6 +280,7 @@
         const talkNextEl = document.getElementById('talkNext');
         const captionsViewport = document.getElementById('captions');
         const captionsInner = document.getElementById('captionsInner');
+        const pausedBannerEl = document.getElementById('pausedBanner');
 
         // Slowly scroll content up as it grows, anchored to the bottom of the
         // viewport. The CSS 3s ease-out transition on captionsInner makes it smooth.
@@ -268,9 +293,23 @@
             }
         }
 
+        // Reads the currently-rendered translateY (i.e. the value the CSS
+        // transition is animating through right now, not the target). We
+        // need this to snap accurately when trim fires mid-animation.
+        function getCurrentTranslateY() {
+            const t = getComputedStyle(captionsInner).transform;
+            if (!t || t === 'none') return 0;
+            try { return new DOMMatrix(t).m42; } catch { return 0; }
+        }
+
         const client = new CaptionsClient({
             venue,
             containerEl: captionsInner,
+            // The big screen only needs a sliver of context — anything
+            // beyond a handful of lines just scrolls off the top anyway.
+            // Keep memory low for long-running display sessions.
+            historyLimit: 20,
+            maxBlocks: 30,
             onStatus(cls, text) {
                 statusEl.className = cls;
                 statusEl.textContent = text;
@@ -292,6 +331,25 @@
                 talkHeader.style.display = 'flex';
             },
             onNewBlock() { updateDisplayPosition(); },
+            onPausedChange(paused) { pausedBannerEl.hidden = !paused; },
+            onTrim(delta) {
+                // Front segments were evicted and the rendered content
+                // shrank by `delta` px. Because translateY is animated by
+                // a 3 s CSS transition but contentHeight changed instantly,
+                // visible_bottom (= translateY + contentHeight) jumps up
+                // by `delta` and then crawls back over 3 s. Snap translateY
+                // forward by `delta` without a transition so the bottom
+                // stays put; the next updateDisplayPosition() then
+                // animates only the genuine new-segment delta.
+                if (delta <= 0) return;
+                const target = getCurrentTranslateY() + delta;
+                captionsInner.style.transition = 'none';
+                captionsInner.style.transform = `translateY(${target}px)`;
+                // Force a reflow so the no-transition assignment commits
+                // before the stylesheet's transition is restored.
+                void captionsInner.offsetHeight;
+                captionsInner.style.transition = '';
+            },
         });
 
         client.init();

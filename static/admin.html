@@ -169,6 +169,66 @@
             font-weight: 600;
         }
 
+        .status-badge.paused {
+            background: var(--warning-color);
+            color: #000730;
+            font-weight: 600;
+        }
+
+        /* Per-venue transcription toggle */
+        .venue-controls {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+        }
+
+        .toggle {
+            position: relative;
+            display: inline-block;
+            width: 2.6rem;
+            height: 1.4rem;
+        }
+
+        .toggle input {
+            opacity: 0;
+            width: 0;
+            height: 0;
+        }
+
+        .toggle .slider {
+            position: absolute;
+            inset: 0;
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 1rem;
+            transition: background 0.2s;
+            cursor: pointer;
+        }
+
+        .toggle .slider::before {
+            content: '';
+            position: absolute;
+            height: 1rem;
+            width: 1rem;
+            left: 0.2rem;
+            top: 0.2rem;
+            background: #fff;
+            border-radius: 50%;
+            transition: transform 0.2s;
+        }
+
+        .toggle input:checked + .slider {
+            background: var(--success-color);
+        }
+
+        .toggle input:checked + .slider::before {
+            transform: translateX(1.2rem);
+        }
+
+        .toggle-label {
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
         .btn {
             padding: 0.5rem 1rem;
             border: none;
@@ -419,16 +479,48 @@
                 const stats = await statsRes.json();
                 const activeVenues = new Set(stats.venues.active_list);
 
-                document.getElementById('venueList').innerHTML = venues.map(v => `
-                    <li class="venue-item">
-                        <span class="venue-name">${escapeHtml(v.name)}</span>
-                        <span class="status-badge ${activeVenues.has(v.id) ? 'live' : 'offline'}">
-                            ${activeVenues.has(v.id) ? 'Live' : 'Offline'}
-                        </span>
-                    </li>
-                `).join('');
+                document.getElementById('venueList').innerHTML = venues.map(v => {
+                    const transcribing = v.transcription_enabled !== false;
+                    const statusClass = !transcribing ? 'paused'
+                        : activeVenues.has(v.id) ? 'live' : 'offline';
+                    const statusLabel = !transcribing ? 'Paused'
+                        : activeVenues.has(v.id) ? 'Live' : 'Offline';
+                    return `
+                        <li class="venue-item">
+                            <span class="venue-name">${escapeHtml(v.name)}</span>
+                            <div class="venue-controls">
+                                <span class="status-badge ${statusClass}">${statusLabel}</span>
+                                <label class="toggle" title="Toggle transcription">
+                                    <input type="checkbox" data-venue="${escapeHtml(v.id)}"
+                                        ${transcribing ? 'checked' : ''}
+                                        onchange="toggleTranscription(this)">
+                                    <span class="slider"></span>
+                                </label>
+                            </div>
+                        </li>
+                    `;
+                }).join('');
             } catch (e) {
                 console.error('Failed to load venues:', e);
+            }
+        }
+
+        async function toggleTranscription(input) {
+            const venueId = input.dataset.venue;
+            const enabled = input.checked;
+            try {
+                const url = `/api/venues/${encodeURIComponent(venueId)}?transcription_enabled=${enabled}`;
+                const response = await fetch(url, { method: 'PATCH', headers: authHeaders() });
+                if (!response.ok) {
+                    input.checked = !enabled;
+                    showAlert(`Failed to ${enabled ? 'enable' : 'disable'} transcription`, 'error');
+                    return;
+                }
+                showAlert(`Transcription ${enabled ? 'enabled' : 'paused'} for ${venueId}`);
+                loadAll();
+            } catch (e) {
+                input.checked = !enabled;
+                showAlert('Failed to update venue', 'error');
             }
         }
 

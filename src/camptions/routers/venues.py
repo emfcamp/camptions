@@ -1,8 +1,9 @@
 """Venue management endpoints."""
 
+from datetime import UTC, datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -14,13 +15,27 @@ from ..services.distribution import distribution_manager
 
 router = APIRouter()
 
+# TranscriptionManager will be set by main.py after initialization
+_transcription_manager = None
 
-@router.get("")
+
+def set_transcription_manager(manager) -> None:
+    global _transcription_manager
+    _transcription_manager = manager
+
+
+@router.get(
+    "",
+    response_model=list[VenueResponse],
+    summary="List venues (stages we caption)",
+)
 async def list_venues(
-    active_only: bool = True,
+    active_only: bool = Query(
+        True, description="Exclude venues marked inactive (e.g. removed stages)."
+    ),
     db: AsyncSession = Depends(get_db),
 ) -> list[VenueResponse]:
-    """List all venues."""
+    """List all venues. Use `active_only=false` to include inactive ones too."""
     query = select(Venue)
     if active_only:
         query = query.where(Venue.is_active == 1)
@@ -32,12 +47,18 @@ async def list_venues(
     return [VenueResponse.model_validate(v) for v in venues]
 
 
-@router.get("/{venue_id}")
+@router.get("/{venue_id}", summary="Venue details including live subscriber count")
 async def get_venue(
     venue_id: str,
     db: AsyncSession = Depends(get_db),
 ) -> dict:
-    """Get venue details including live status."""
+    """
+    Return the venue's metadata plus the current caption subscriber count.
+
+    `subscriber_count` is the number of clients currently connected to this
+    venue's WebSocket / SSE stream — useful for cheap "is anyone watching"
+    style checks.
+    """
     result = await db.execute(select(Venue).where(Venue.id == venue_id))
     venue = result.scalar_one_or_none()
 
@@ -49,6 +70,7 @@ async def get_venue(
         "name": venue.name,
         "description": venue.description,
         "is_active": bool(venue.is_active),
+        "transcription_enabled": bool(venue.transcription_enabled),
         "created_at": venue.created_at.isoformat() if venue.created_at else None,
         "subscriber_count": distribution_manager.get_subscriber_count(venue_id),
     }
@@ -83,6 +105,7 @@ async def update_venue(
     name: Optional[str] = None,
     description: Optional[str] = None,
     is_active: Optional[bool] = None,
+    transcription_enabled: Optional[bool] = None,
     db: AsyncSession = Depends(get_db),
 ) -> VenueResponse:
     """Update venue details."""
@@ -99,7 +122,31 @@ async def update_venue(
     if is_active is not None:
         venue.is_active = 1 if is_active else 0
 
+    transcription_state_changed = False
+    if transcription_enabled is not None:
+        new_val = 1 if transcription_enabled else 0
+        if new_val != venue.transcription_enabled:
+            venue.transcription_enabled = new_val
+            transcription_state_changed = True
+
     await db.commit()
     await db.refresh(venue)
+
+    if transcription_state_changed:
+        # When disabling, also tear down any active session so audio stops
+        # being transcribed immediately. The Pi may still be streaming —
+        # the audio router treats a missing session as "discard".
+        if not transcription_enabled and _transcription_manager is not None:
+            if _transcription_manager.has_active_session(venue_id):
+                await _transcription_manager.end_session(venue_id)
+        await distribution_manager.broadcast(
+            venue_id,
+            {
+                "type": "transcription_disabled" if not transcription_enabled
+                        else "transcription_enabled",
+                "venue_id": venue_id,
+                "timestamp": datetime.now(UTC).isoformat(),
+            },
+        )
 
     return VenueResponse.model_validate(venue)

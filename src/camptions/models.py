@@ -22,6 +22,7 @@ class Venue(Base):
     name = Column(String(100), nullable=False)
     description = Column(Text)
     is_active = Column(Integer, default=1)
+    transcription_enabled = Column(Integer, default=1, nullable=False)
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
     sessions = relationship("Session", back_populates="venue")

@@ -5,15 +5,23 @@
  * container element and callbacks; this module owns the connection lifecycle,
  * segment map, and block rendering.
  *
+ * Segments are keyed by `${session_id}:${sequence}` so committed segments
+ * from a fresh session never overwrite history slots from an older session
+ * (per-session sequences both restart at 1). venue_live only clears the
+ * display when the session_id genuinely changes — a backend WL reconnect
+ * within the same Pi session leaves the captions in place.
+ *
  * Protocol expectations (server → client):
- *   connected        { is_live }
- *   venue_live       {}
- *   venue_offline    {}
- *   session_end      {}
- *   committed        { sequence, text, timestamp }
- *   tentative        { text }
- *   keepalive        {}
- *   schedule_update  { now, next }
+ *   connected               { session_id, is_live, transcription_enabled }
+ *   venue_live              { session_id }
+ *   venue_offline           {}
+ *   session_end             { session_id }
+ *   committed               { session_id, sequence, text, timestamp }
+ *   tentative               { session_id, text }
+ *   transcription_disabled  {}
+ *   transcription_enabled   {}
+ *   keepalive               {}
+ *   schedule_update         { now, next }
  */
 
 class CaptionsClient {
@@ -22,35 +30,48 @@ class CaptionsClient {
      * @param {string}      opts.venue             - venue ID for WS URL and history fetch
      * @param {HTMLElement} opts.containerEl        - element that receives .caption-segment / .caption-tentative spans
      * @param {number}      [opts.maxBlocks=500]    - evict oldest block when exceeded
+     * @param {number}      [opts.historyLimit=200] - segments requested from /history on first load
      * @param {function}    [opts.onStatus]         - (cssClass: string, text: string) => void
      * @param {function}    [opts.onSessionStart]   - () => void — fired on venue_live
      * @param {function}    [opts.onSessionEnd]     - () => void — fired on session_end / venue_offline
      * @param {function}    [opts.onScheduleUpdate] - (data) => void
      * @param {function}    [opts.onNewBlock]       - (blockEl: HTMLElement) => void
+     * @param {function}    [opts.onPausedChange]   - (paused: bool) => void — fired when admin toggles transcription
+     * @param {function}    [opts.onTrim]           - (heightDelta: number) => void — fired when front segments are evicted; delta is the height (px) the container lost so callers can compensate scroll/transform instantly
      */
     constructor({
         venue,
         containerEl,
         maxBlocks = 500,
+        historyLimit = 200,
         onStatus = () => {},
         onSessionStart = () => {},
         onSessionEnd = () => {},
         onScheduleUpdate = () => {},
         onNewBlock = () => {},
+        onPausedChange = () => {},
+        onTrim = () => {},
     }) {
         this.venue = venue;
         this.containerEl = containerEl;
         this.maxBlocks = maxBlocks;
+        this.historyLimit = historyLimit;
         this.onStatus = onStatus;
         this.onSessionStart = onSessionStart;
         this.onSessionEnd = onSessionEnd;
         this.onScheduleUpdate = onScheduleUpdate;
         this.onNewBlock = onNewBlock;
+        this.onPausedChange = onPausedChange;
+        this.onTrim = onTrim;
 
-        /** @type {Map<number, HTMLElement>} sequence → .caption-segment span */
+        /** @type {Map<string, HTMLElement>} "session_id:sequence" → .caption-segment span */
         this.segmentMap = new Map();
         /** @type {HTMLElement|null} */
         this.tentativeSpan = null;
+        /** @type {string|null} session_id currently rendered live; null until we see one */
+        this.currentSessionId = null;
+        /** @type {boolean} true when admin has disabled transcription for this venue */
+        this.paused = false;
 
         this.ws = null;
         this.reconnectAttempts = 0;
@@ -123,20 +144,30 @@ class CaptionsClient {
             case 'keepalive':
                 return;
             case 'connected':
-                this.onStatus(
-                    data.is_live ? 'live' : 'offline',
-                    data.is_live ? 'Connected · Live' : 'Connected · Source Offline',
-                );
+                if (data.session_id) this.currentSessionId = data.session_id;
+                if (typeof data.transcription_enabled === 'boolean') {
+                    this._setPaused(!data.transcription_enabled);
+                }
+                if (!this.paused) {
+                    this.onStatus(
+                        data.is_live ? 'live' : 'offline',
+                        data.is_live ? 'Connected · Live' : 'Connected · Source Offline',
+                    );
+                }
                 return;
             case 'venue_live':
-                this.onStatus('live', 'Connected · Live');
-                this._clearAll();
-                this.onSessionStart();
+                this._adoptSession(data.session_id);
+                if (!this.paused) {
+                    this.onStatus('live', 'Connected · Live');
+                    this.onSessionStart();
+                }
                 return;
             case 'venue_offline':
-                this.onStatus('offline', 'Connected · Source Offline');
                 this._clearTentative();
-                this.onSessionEnd();
+                if (!this.paused) {
+                    this.onStatus('offline', 'Connected · Source Offline');
+                    this.onSessionEnd();
+                }
                 return;
             case 'session_end':
                 this._clearTentative();
@@ -146,14 +177,45 @@ class CaptionsClient {
                 this.onScheduleUpdate(data);
                 return;
             case 'committed':
-                this._onCommitted(data.sequence, data.text);
+                this._onCommitted(data.session_id, data.sequence, data.text);
                 return;
             case 'tentative':
                 this._onTentative(data.text);
                 return;
+            case 'transcription_disabled':
+                this._setPaused(true);
+                return;
+            case 'transcription_enabled':
+                this._setPaused(false);
+                return;
             default:
                 console.warn('CaptionsClient: unhandled message type', data.type);
         }
+    }
+
+    _setPaused(paused) {
+        if (this.paused === paused) return;
+        this.paused = paused;
+        if (paused) {
+            this._clearTentative();
+            this.onStatus('paused', 'Transcription paused');
+        } else {
+            // After un-pausing we revert to "offline" until the next
+            // venue_live/connected message refines it. A new Pi session is
+            // also a new session_id, so committed history is preserved.
+            this.onStatus('offline', 'Connected · Source Offline');
+        }
+        this.onPausedChange(paused);
+    }
+
+    // ── Session tracking ─────────────────────────────────────────────────────
+    // Segments are keyed by (session_id, sequence), so a new session never
+    // overwrites an older session's slots. We never clear on session
+    // change — viewers want continuity across Pi reconnects, talk
+    // transitions, etc. _trimSegments still bounds the in-DOM count.
+    _adoptSession(sessionId) {
+        if (!sessionId) return;
+        this.currentSessionId = sessionId;
     }
 
     // ── Segment rendering ────────────────────────────────────────────────────
@@ -162,9 +224,9 @@ class CaptionsClient {
     // The tentative is a trailing <span> that's replaced (or removed) in
     // place; new committed segments are inserted before it.
 
-    _onCommitted(seq, text) {
+    _onCommitted(sessionId, seq, text) {
         if (!text || !text.trim()) return;
-        const span = this._ensureSegment(seq);
+        const span = this._ensureSegment(sessionId, seq);
         span.textContent = text.trim() + ' ';
         this._trimSegments();
         this.onNewBlock(span);
@@ -191,26 +253,35 @@ class CaptionsClient {
         }
     }
 
-    _ensureSegment(seq) {
-        if (this.segmentMap.has(seq)) return this.segmentMap.get(seq);
+    _ensureSegment(sessionId, seq) {
+        const key = `${sessionId ?? '_'}:${seq}`;
+        if (this.segmentMap.has(key)) return this.segmentMap.get(key);
         const span = document.createElement('span');
         span.className = 'caption-segment';
+        span.dataset.sessionId = sessionId ?? '';
         span.dataset.seq = seq;
         if (this.tentativeSpan) {
             this.containerEl.insertBefore(span, this.tentativeSpan);
         } else {
             this.containerEl.appendChild(span);
         }
-        this.segmentMap.set(seq, span);
+        this.segmentMap.set(key, span);
         return span;
     }
 
     _trimSegments() {
+        if (this.segmentMap.size <= this.maxBlocks) return;
+        // Measure container height before/after eviction so the caller can
+        // snap scroll/transform instantly and avoid a visible jump caused
+        // by the container shrinking from the top.
+        const heightBefore = this.containerEl.offsetHeight;
         while (this.segmentMap.size > this.maxBlocks) {
-            const [seq, span] = this.segmentMap.entries().next().value;
+            const [key, span] = this.segmentMap.entries().next().value;
             span.remove();
-            this.segmentMap.delete(seq);
+            this.segmentMap.delete(key);
         }
+        const delta = heightBefore - this.containerEl.offsetHeight;
+        if (delta > 0) this.onTrim(delta);
     }
 
     _clearAll() {
@@ -222,13 +293,15 @@ class CaptionsClient {
     // ── History ──────────────────────────────────────────────────────────────
 
     async _loadHistory() {
+        if (this.historyLimit <= 0) return;
         try {
-            const res = await fetch(`/api/captions/history/${this.venue}?limit=200`);
+            const url = `/api/captions/history/${this.venue}?limit=${this.historyLimit}`;
+            const res = await fetch(url);
             if (!res.ok) return;
             const { segments = [] } = await res.json();
             for (const s of segments.filter(s => s.text && s.text.trim())) {
                 const seq = s.sequence ?? -(this.segmentMap.size + 1);
-                this._onCommitted(seq, s.text);
+                this._onCommitted(s.session_id ?? null, seq, s.text);
             }
         } catch (err) {
             console.error('CaptionsClient: history load failed', err);
