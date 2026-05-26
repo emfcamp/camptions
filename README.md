@@ -84,11 +84,13 @@ uvicorn camptions.main:app --reload
 - `GET /api/schedule/now-and-next` — Now/next talks for all venues
 - `GET /api/schedule/now-and-next/{venue_id}` — Now/next for one venue
 
-### Admin 🔒 (all require `Authorization: Bearer <ADMIN_TOKEN>`)
-- `GET /api/admin/stats` — System statistics
-- `GET /api/admin/sessions` — List recent sessions
-- `POST /api/admin/init-venues` — Initialize default venues
-- `POST /api/admin/cleanup` — Clean up old data
+### Admin
+- `GET /api/admin/stats` — System statistics (public)
+- `GET /api/admin/sessions` — List recent sessions 🔒
+- `POST /api/admin/init-venues` — Initialize default venues 🔒
+- `POST /api/admin/cleanup` — Clean up old data 🔒
+
+🔒 = requires `Authorization: Bearer <ADMIN_TOKEN>`
 
 ## Configuration
 
@@ -109,6 +111,8 @@ Environment variables (prefix with `CAMPTIONS_`):
 | `INGEST_TOKEN` | *(required)* | Token for Pi audio-ingest WebSocket (`?token=`) |
 | `DEFAULT_VENUES` | `["stage-a", "stage-b", "stage-c"]` | Default venue IDs created by `init-venues` |
 | `CAPTION_RETENTION_HOURS` | `72` | Hours to retain caption data |
+| `RATE_LIMIT_PER_MINUTE` | `120` | Max HTTP requests per client IP per minute on public API endpoints (0 = disabled) |
+| `WS_CONNECTIONS_PER_IP` | `10` | Max simultaneous WebSocket connections per client IP |
 
 Generate camptions tokens with: `python3 -c "import secrets; print(secrets.token_hex(32))"`
 
@@ -200,7 +204,7 @@ sudo ./setup-full.sh
 | `/v/{venue_id}` | Viewer pre-selected to a specific venue |
 | `/display/{venue_id}` | Large-screen caption display |
 | `/admin` | Admin interface — venue controls, stream URL config |
-| `/status` | Public status board — venue live/offline state, subscriber counts, now/next schedule. Pass `?token=<ADMIN_TOKEN>` to show live vs offline distinction. |
+| `/status` | Public status board — venue live/offline state, subscriber counts, now/next schedule. Pass `?token=<ADMIN_TOKEN>` to also show segment totals from the admin stats API. |
 
 ### Display URL Parameters
 
@@ -209,7 +213,6 @@ sudo ./setup-full.sh
 | `venue` | venue ID | Which venue to display |
 | `mode` | `dark`, `light`, `high-contrast` | Color scheme |
 | `fontSize` | CSS value | Font size (e.g., `4vw`, `48px`) |
-| `maxLines` | number | Maximum lines to show |
 
 ## Project Structure
 
@@ -223,8 +226,6 @@ camptions/
 │   └── services/           # Business logic
 ├── static/                 # Frontend HTML/CSS/JS
 ├── raspberry-pi/           # Pi setup scripts
-├── tests/                  # Test suite
-├── alembic/                # Database migrations
 ├── Dockerfile              # Container build
 └── docker-compose.yml      # Container orchestration
 ```
