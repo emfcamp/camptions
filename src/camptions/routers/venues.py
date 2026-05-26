@@ -71,6 +71,7 @@ async def get_venue(
         "description": venue.description,
         "is_active": bool(venue.is_active),
         "transcription_enabled": bool(venue.transcription_enabled),
+        "stream_url": venue.stream_url,
         "created_at": venue.created_at.isoformat() if venue.created_at else None,
         "subscriber_count": distribution_manager.get_subscriber_count(venue_id),
     }
@@ -106,9 +107,10 @@ async def update_venue(
     description: Optional[str] = None,
     is_active: Optional[bool] = None,
     transcription_enabled: Optional[bool] = None,
+    stream_url: Optional[str] = None,
     db: AsyncSession = Depends(get_db),
 ) -> VenueResponse:
-    """Update venue details."""
+    """Update venue details. Pass `stream_url=""` to clear a configured URL."""
     result = await db.execute(select(Venue).where(Venue.id == venue_id))
     venue = result.scalar_one_or_none()
 
@@ -121,6 +123,8 @@ async def update_venue(
         venue.description = description
     if is_active is not None:
         venue.is_active = 1 if is_active else 0
+    if stream_url is not None:
+        venue.stream_url = stream_url or None
 
     transcription_state_changed = False
     if transcription_enabled is not None:

@@ -31,6 +31,7 @@ async_session_maker = async_sessionmaker(
 # duplicate-column OperationalError is swallowed.
 _COLUMN_ADDS: list[tuple[str, str, str]] = [
     ("venues", "transcription_enabled", "INTEGER NOT NULL DEFAULT 1"),
+    ("venues", "stream_url", "TEXT"),
 ]
 
 

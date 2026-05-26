@@ -132,16 +132,60 @@
 
         .venue-item {
             display: flex;
-            justify-content: space-between;
-            align-items: center;
+            flex-direction: column;
+            gap: 0.5rem;
             padding: 0.75rem;
             margin-bottom: 0.5rem;
             background: rgba(255,255,255,0.05);
             border-radius: 0.25rem;
         }
 
+        .venue-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
         .venue-name {
             font-weight: 500;
+        }
+
+        .venue-stream {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+            min-width: 0;
+        }
+
+        .venue-stream-url {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            flex: 1 1 auto;
+            min-width: 0;
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        }
+
+        .venue-stream-url.unset {
+            font-style: italic;
+            font-family: inherit;
+        }
+
+        .btn-link {
+            background: none;
+            border: none;
+            color: var(--accent-color);
+            cursor: pointer;
+            font-size: 0.75rem;
+            padding: 0.25rem 0.5rem;
+            text-decoration: underline;
+        }
+
+        .btn-link:hover {
+            opacity: 0.8;
         }
 
         .venue-status {
@@ -485,17 +529,28 @@
                         : activeVenues.has(v.id) ? 'live' : 'offline';
                     const statusLabel = !transcribing ? 'Paused'
                         : activeVenues.has(v.id) ? 'Live' : 'Offline';
+                    const streamUrl = v.stream_url || '';
+                    const streamLabel = streamUrl
+                        ? `<span class="venue-stream-url" title="${escapeHtml(streamUrl)}">${escapeHtml(streamUrl)}</span>`
+                        : `<span class="venue-stream-url unset">no stream configured</span>`;
                     return `
                         <li class="venue-item">
-                            <span class="venue-name">${escapeHtml(v.name)}</span>
-                            <div class="venue-controls">
-                                <span class="status-badge ${statusClass}">${statusLabel}</span>
-                                <label class="toggle" title="Toggle transcription">
-                                    <input type="checkbox" data-venue="${escapeHtml(v.id)}"
-                                        ${transcribing ? 'checked' : ''}
-                                        onchange="toggleTranscription(this)">
-                                    <span class="slider"></span>
-                                </label>
+                            <div class="venue-row">
+                                <span class="venue-name">${escapeHtml(v.name)}</span>
+                                <div class="venue-controls">
+                                    <span class="status-badge ${statusClass}">${statusLabel}</span>
+                                    <label class="toggle" title="Toggle transcription">
+                                        <input type="checkbox" data-venue="${escapeHtml(v.id)}"
+                                            ${transcribing ? 'checked' : ''}
+                                            onchange="toggleTranscription(this)">
+                                        <span class="slider"></span>
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="venue-stream">
+                                <span>Presentation Stream:</span>
+                                ${streamLabel}
+                                <button class="btn-link" data-venue="${escapeHtml(v.id)}" data-current="${escapeHtml(streamUrl)}" onclick="editStreamUrl(this)">Edit</button>
                             </div>
                         </li>
                     `;
@@ -521,6 +576,29 @@
             } catch (e) {
                 input.checked = !enabled;
                 showAlert('Failed to update venue', 'error');
+            }
+        }
+
+        async function editStreamUrl(btn) {
+            const venueId = btn.dataset.venue;
+            const current = btn.dataset.current || '';
+            const next = prompt(
+                `Stream URL for ${venueId} (WHEP endpoint). Leave empty to clear.`,
+                current,
+            );
+            if (next === null) return;
+            const trimmed = next.trim();
+            try {
+                const url = `/api/venues/${encodeURIComponent(venueId)}?stream_url=${encodeURIComponent(trimmed)}`;
+                const response = await fetch(url, { method: 'PATCH', headers: authHeaders() });
+                if (!response.ok) {
+                    showAlert('Failed to update stream URL', 'error');
+                    return;
+                }
+                showAlert(trimmed ? `Stream URL set for ${venueId}` : `Stream URL cleared for ${venueId}`);
+                loadAll();
+            } catch (e) {
+                showAlert('Failed to update stream URL', 'error');
             }
         }
 

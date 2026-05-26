@@ -384,7 +384,57 @@
         #jumpToBottomBtn.hidden {
             display: none;
         }
-    </style>
+
+        /* Embedded WebRTC stream — pinned above the scrolling captions.
+           Hidden until the player reports its first 'connected' state, so
+           the area doesn't reserve space for an unreachable stream. */
+        #streamContainer {
+            flex: none;
+            position: relative;
+            z-index: 90;
+            background: #000;
+            width: 100%;
+            aspect-ratio: 16 / 9;
+            max-height: 45vh;
+            display: none;
+        }
+
+        #streamContainer.visible {
+            display: block;
+        }
+
+        #streamVideo {
+            width: 100%;
+            height: 100%;
+            object-fit: contain;
+            background: #000;
+            display: block;
+        }
+
+        .stream-btn {
+            margin-left: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            border-radius: 0.5rem;
+            background: var(--bg-color);
+            border: 1px solid var(--text-muted);
+            color: var(--text-color);
+            cursor: pointer;
+            font-size: 1.1rem;
+            line-height: 1;
+        }
+
+        .stream-btn:hover {
+            border-color: var(--text-color);
+        }
+
+        .stream-btn[hidden] {
+            display: none;
+        }
+
+        .stream-btn.off {
+            opacity: 0.5;
+        }
+</style>
 </head>
 <body>
     <header>
@@ -414,6 +464,10 @@
     <nav class="venue-selector">
         <div class="venue-tabs" id="venueTabs"></div>
     </nav>
+
+    <div id="streamContainer">
+        <video id="streamVideo" autoplay playsinline muted></video>
+    </div>
 
     <main id="mainScroll">
         <div id="nowPlaying" class="now-playing" style="display:none">
@@ -450,12 +504,14 @@
             <div class="font-controls">
                 <button class="font-btn" id="fontDecrease">A-</button>
                 <button class="font-btn" id="fontIncrease">A+</button>
+                <button class="stream-btn" id="streamToggle" hidden title="Toggle video">📺</button>
             </div>
             <button class="theme-toggle" id="themeToggle">&#127769;</button>
         </div>
     </footer>
 
     <script src="/static/captions-client.js"></script>
+    <script src="/static/stream-player.js"></script>
     <script>
         const DEFAULT_VENUES = [
             { id: 'stage-a', name: 'Stage A' },
@@ -472,11 +528,17 @@
         const mainScrollEl = document.getElementById('mainScroll');
         const pausedBannerEl = document.getElementById('pausedBanner');
         const jumpBtn = document.getElementById('jumpToBottomBtn');
+        const streamContainerEl = document.getElementById('streamContainer');
+        const streamVideoEl = document.getElementById('streamVideo');
+        const streamToggleEl = document.getElementById('streamToggle');
 
         const SCROLL_BOTTOM_THRESHOLD = 80;  // px from bottom still considered "at bottom"
         let userScrolledUp = false;
         let fontSize = parseFloat(localStorage.getItem('fontSize')) || 1;
         let isDarkMode = localStorage.getItem('theme') !== 'light';
+        let streamWanted = localStorage.getItem('streamVisible') !== 'false';
+        /** @type {WhepPlayer|null} */
+        let streamPlayer = null;
 
         function venueFromPath() {
             const match = location.pathname.match(/^\/v\/([^/]+)\/?$/);
@@ -508,11 +570,59 @@
                 const data = await res.json();
                 if (Array.isArray(data) && data.length > 0) {
                     venues.length = 0;
-                    data.forEach(v => venues.push({ id: v.id, name: v.name }));
+                    data.forEach(v => venues.push({
+                        id: v.id,
+                        name: v.name,
+                        stream_url: v.stream_url || null,
+                    }));
                 }
             } catch {
                 console.warn('Using fallback venue list');
             }
+        }
+
+        function currentVenueStreamUrl() {
+            const v = venues.find(x => x.id === currentVenue);
+            return v && v.stream_url ? v.stream_url : null;
+        }
+
+        function setStreamVisible(visible) {
+            streamContainerEl.classList.toggle('visible', visible);
+        }
+
+        function applyStreamToggleUi() {
+            const hasUrl = !!currentVenueStreamUrl();
+            streamToggleEl.hidden = !hasUrl;
+            streamToggleEl.classList.toggle('off', !streamWanted);
+            streamToggleEl.setAttribute(
+                'aria-pressed', streamWanted ? 'true' : 'false');
+            streamToggleEl.title = streamWanted ? 'Hide video' : 'Show video';
+        }
+
+        function teardownStream() {
+            if (streamPlayer) {
+                streamPlayer.destroy();
+                streamPlayer = null;
+            }
+            setStreamVisible(false);
+        }
+
+        function startStreamIfWanted() {
+            teardownStream();
+            const url = currentVenueStreamUrl();
+            if (!url || !streamWanted) return;
+            streamPlayer = new WhepPlayer({
+                url,
+                videoEl: streamVideoEl,
+                onStateChange(state) {
+                    // Only reveal the container once we've actually connected
+                    // at least once. If the stream is unreachable the container
+                    // stays hidden and background retries continue silently
+                    // until the stream comes up.
+                    if (state === 'connected') setStreamVisible(true);
+                },
+            });
+            streamPlayer.start();
         }
 
         function renderVenueTabs() {
@@ -584,6 +694,9 @@
             }
 
             if (client) client.destroy();
+            teardownStream();
+            applyStreamToggleUi();
+            startStreamIfWanted();
 
             // Reset caption area
             captionsEl.innerHTML = '';
@@ -693,6 +806,14 @@
             isDarkMode = !isDarkMode;
             localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
             applyTheme();
+        });
+
+        streamToggleEl.addEventListener('click', () => {
+            streamWanted = !streamWanted;
+            localStorage.setItem('streamVisible', streamWanted ? 'true' : 'false');
+            applyStreamToggleUi();
+            if (streamWanted) startStreamIfWanted();
+            else teardownStream();
         });
 
         async function init() {

@@ -23,6 +23,7 @@ class Venue(Base):
     description = Column(Text)
     is_active = Column(Integer, default=1)
     transcription_enabled = Column(Integer, default=1, nullable=False)
+    stream_url = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(UTC))
 
     sessions = relationship("Session", back_populates="venue")

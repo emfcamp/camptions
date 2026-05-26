@@ -11,6 +11,7 @@ class VenueBase(BaseModel):
 
     name: str
     description: Optional[str] = None
+    stream_url: Optional[str] = None
 
 
 class VenueCreate(VenueBase):
