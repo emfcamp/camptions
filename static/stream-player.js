@@ -18,14 +18,18 @@
 class WhepPlayer {
     /**
      * @param {object} opts
-     * @param {string}            opts.url           - WHEP endpoint URL
-     * @param {HTMLVideoElement}  opts.videoEl       - target <video> element
+     * @param {string}            opts.url             - WHEP endpoint URL
+     * @param {HTMLVideoElement}  opts.videoEl         - target <video> element
      * @param {function}          [opts.onStateChange] - (state: string) => void
+     *   States: 'connecting' | 'connected' | 'failed' | 'stopped' | 'closed'
+     *   'stopped' fires when maxRetries is exhausted — no further retries.
+     * @param {number}            [opts.maxRetries=8]  - give up after this many failed attempts
      */
-    constructor({ url, videoEl, onStateChange = () => {} }) {
+    constructor({ url, videoEl, onStateChange = () => {}, maxRetries = 8 }) {
         this.url = url;
         this.videoEl = videoEl;
         this.onStateChange = onStateChange;
+        this.maxRetries = maxRetries;
         this.pc = null;
         this.resourceUrl = null;
         this.abortController = null;
@@ -125,6 +129,10 @@ class WhepPlayer {
 
     _scheduleRetry() {
         if (this.destroyed || this.retryTimer) return;
+        if (this.retryAttempt >= this.maxRetries) {
+            this._setState('stopped');
+            return;
+        }
         this._setState('failed');
         const delay = Math.min(30000, 1000 * Math.pow(2, this.retryAttempt));
         this.retryAttempt += 1;
