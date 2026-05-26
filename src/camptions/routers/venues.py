@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..auth import require_admin
 from ..database import get_db
 from ..models import Venue
-from ..schemas import VenueCreate, VenueResponse
+from ..schemas import PublicVenueStatus, VenueCreate, VenueResponse
 from ..services.distribution import distribution_manager
 
 router = APIRouter()
@@ -24,9 +24,29 @@ def set_transcription_manager(manager) -> None:
     _transcription_manager = manager
 
 
+def _enrich_venue(venue: Venue) -> PublicVenueStatus:
+    """Attach live runtime metrics to a Venue ORM object."""
+    vid = venue.id
+    dist_drops = distribution_manager.get_drop_counts()
+    audio_drops = 0
+    is_live = False
+    if _transcription_manager is not None:
+        is_live = _transcription_manager.is_live(vid)
+        vs = _transcription_manager.venues.get(vid)
+        if vs is not None:
+            audio_drops = vs.audio_drops
+    return PublicVenueStatus(
+        **VenueResponse.model_validate(venue).model_dump(),
+        is_live=is_live,
+        subscriber_count=distribution_manager.get_subscriber_count(vid),
+        audio_drops=audio_drops,
+        distribution_drops=dist_drops.get(vid, 0),
+    )
+
+
 @router.get(
     "",
-    response_model=list[VenueResponse],
+    response_model=list[PublicVenueStatus],
     summary="List venues (stages we caption)",
 )
 async def list_venues(
@@ -34,7 +54,7 @@ async def list_venues(
         True, description="Exclude venues marked inactive (e.g. removed stages)."
     ),
     db: AsyncSession = Depends(get_db),
-) -> list[VenueResponse]:
+) -> list[PublicVenueStatus]:
     """List all venues. Use `active_only=false` to include inactive ones too."""
     query = select(Venue)
     if active_only:
@@ -44,20 +64,26 @@ async def list_venues(
     result = await db.execute(query)
     venues = result.scalars().all()
 
-    return [VenueResponse.model_validate(v) for v in venues]
+    return [_enrich_venue(v) for v in venues]
 
 
-@router.get("/{venue_id}", summary="Venue details including live subscriber count")
+@router.get(
+    "/{venue_id}",
+    response_model=PublicVenueStatus,
+    summary="Venue details including live status and metrics",
+)
 async def get_venue(
     venue_id: str,
     db: AsyncSession = Depends(get_db),
-) -> dict:
+) -> PublicVenueStatus:
     """
-    Return the venue's metadata plus the current caption subscriber count.
+    Return venue metadata plus current runtime status.
 
-    `subscriber_count` is the number of clients currently connected to this
-    venue's WebSocket / SSE stream — useful for cheap "is anyone watching"
-    style checks.
+    `is_live` is true when both the Pi audio source is streaming and
+    WhisperLive is handshaked for this venue.  `subscriber_count` is the
+    number of caption viewers connected right now.  `audio_drops` and
+    `distribution_drops` are non-zero only when the pipeline is under
+    pressure.
     """
     result = await db.execute(select(Venue).where(Venue.id == venue_id))
     venue = result.scalar_one_or_none()
@@ -65,16 +91,7 @@ async def get_venue(
     if not venue:
         raise HTTPException(status_code=404, detail="Venue not found")
 
-    return {
-        "id": venue.id,
-        "name": venue.name,
-        "description": venue.description,
-        "is_active": bool(venue.is_active),
-        "transcription_enabled": bool(venue.transcription_enabled),
-        "stream_url": venue.stream_url,
-        "created_at": venue.created_at.isoformat() if venue.created_at else None,
-        "subscriber_count": distribution_manager.get_subscriber_count(venue_id),
-    }
+    return _enrich_venue(venue)
 
 
 @router.post("", dependencies=[Depends(require_admin)])

@@ -22,6 +22,7 @@
             --live: #2AE28C;
             --offline: #a8b3d4;
             --paused: #F9E200;
+            --error: #F5515E;
         }
 
         body {
@@ -226,6 +227,15 @@
             font-size: 0.7rem;
         }
 
+        /* ── Drop warning ────────────────────────────── */
+        .venue-drops {
+            font-size: 0.8rem;
+            color: var(--paused);
+            display: flex;
+            align-items: center;
+            gap: 0.4rem;
+        }
+
         /* ── Viewer link ─────────────────────────────── */
         .venue-links {
             display: flex;
@@ -279,6 +289,14 @@
             <span class="total-label">Segments today</span>
             <span class="total-value" id="totSegments">—</span>
         </div>
+        <div class="total-item" id="totDropsItem" style="display:none">
+            <span class="total-label">Drops</span>
+            <span class="total-value" id="totDrops">0</span>
+        </div>
+    </div>
+
+    <div id="errorBanner" style="display:none; background:rgba(245,81,94,0.12); border:1px solid var(--error,#F5515E); border-radius:0.5rem; padding:0.75rem 1rem; margin-bottom:1.5rem; color:var(--error,#F5515E); font-size:0.875rem;">
+        ⚠ Cannot reach the captions server — data shown may be stale.
     </div>
 
     <div class="venues" id="venues">
@@ -288,9 +306,8 @@
 </div>
 
 <script>
-    // Optional admin token from URL: /status?token=xxx gives richer live/offline info.
-    const params = new URLSearchParams(location.search);
-    const TOKEN  = params.get('token') || '';
+    // Optional admin token from URL: /status?token=xxx gives segment totals.
+    const TOKEN = new URLSearchParams(location.search).get('token') || '';
 
     function authHeaders() {
         return TOKEN ? { 'Authorization': `Bearer ${TOKEN}` } : {};
@@ -298,97 +315,94 @@
 
     function escapeHtml(s) {
         return String(s ?? '')
-            .replace(/&/g, '&amp;')
-            .replace(/</g, '&lt;')
-            .replace(/>/g, '&gt;')
-            .replace(/"/g, '&quot;');
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
     function fmtTime(iso) {
         if (!iso) return '';
-        try {
-            return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-        } catch { return iso; }
+        try { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); }
+        catch { return iso; }
     }
 
     function scheduleBlock(slot, tag) {
         if (!slot || !slot.title) return '';
-        const time = slot.start_time ? `<span class="schedule-time">${fmtTime(slot.start_time)}</span>` : '';
         const speaker = slot.speaker ? `<div class="schedule-speaker">${escapeHtml(slot.speaker)}</div>` : '';
+        const time    = slot.start_time ? `<span class="schedule-time">${fmtTime(slot.start_time)}</span>` : '';
         return `
             <div class="schedule-row ${tag.toLowerCase()}">
                 <span class="schedule-tag">${tag}</span>
                 <div>
                     <div class="schedule-title">${escapeHtml(slot.title)}</div>
-                    ${speaker}
-                    ${time}
+                    ${speaker}${time}
                 </div>
             </div>`;
     }
 
+    function setError(show) {
+        document.getElementById('errorBanner').style.display = show ? 'block' : 'none';
+    }
+
     async function refresh() {
         try {
-            // --- fetch everything in parallel ---
             const [venuesRes, schedRes, adminStatsRes] = await Promise.all([
                 fetch('/api/venues'),
                 fetch('/api/schedule/now-and-next'),
                 TOKEN ? fetch('/api/admin/stats', { headers: authHeaders() }) : Promise.resolve(null),
             ]);
 
-            const venues   = await venuesRes.json();
-            const schedule = await schedRes.json();  // list of NowAndNext
-            const adminStats = adminStatsRes ? await adminStatsRes.json() : null;
+            if (!venuesRes.ok) throw new Error(`venues ${venuesRes.status}`);
 
-            // Subscriber counts per venue — all public, run in parallel.
-            const details = await Promise.all(
-                venues.map(v => fetch(`/api/venues/${encodeURIComponent(v.id)}`).then(r => r.json()))
-            );
+            const venues     = await venuesRes.json();
+            const schedule   = schedRes.ok ? await schedRes.json() : [];
+            const adminStats = (adminStatsRes?.ok) ? await adminStatsRes.json() : null;
 
-            // Build lookup maps.
+            setError(false);
+
+            // Schedule lookup.
             const schedMap = {};
-            for (const s of (Array.isArray(schedule) ? schedule : [])) {
-                schedMap[s.venue_id] = s;
-            }
-            const detailMap = {};
-            for (const d of details) {
-                detailMap[d.id] = d;
-            }
-            const liveSet = new Set(adminStats?.venues?.active_list ?? []);
+            for (const s of (Array.isArray(schedule) ? schedule : [])) schedMap[s.venue_id] = s;
 
-            // Totals.
-            let totalSubs = 0;
-            let totalLive = 0;
-            for (const v of venues) {
-                const subs = detailMap[v.id]?.subscriber_count ?? 0;
-                totalSubs += subs;
-                const isLive = TOKEN
-                    ? liveSet.has(v.id)
-                    : v.transcription_enabled;
-                if (isLive) totalLive++;
-            }
+            // Totals bar.
+            const totalSubs = venues.reduce((n, v) => n + (v.subscriber_count ?? 0), 0);
+            const totalLive = venues.filter(v => v.transcription_enabled && v.is_live).length;
+            const totalDrops = venues.reduce((n, v) => n + (v.audio_drops ?? 0) + (v.distribution_drops ?? 0), 0);
 
-            document.getElementById('totLive').textContent = TOKEN
-                ? `${totalLive} / ${venues.length}`
-                : `${venues.filter(v => v.transcription_enabled).length} enabled`;
-            document.getElementById('totSubs').textContent = totalSubs;
+            document.getElementById('totLive').textContent     = `${totalLive} / ${venues.length}`;
+            document.getElementById('totSubs').textContent     = totalSubs;
             document.getElementById('totSegments').textContent =
                 adminStats ? (adminStats.segments?.total ?? '—').toLocaleString() : '—';
 
+            // Drops total (only shown when non-zero).
+            const dropsEl = document.getElementById('totDrops');
+            const dropsItem = document.getElementById('totDropsItem');
+            if (totalDrops > 0) {
+                dropsEl.textContent = totalDrops;
+                dropsEl.style.color = 'var(--paused)';
+                dropsItem.style.display = '';
+            } else {
+                dropsItem.style.display = 'none';
+            }
+
             // Venue cards.
             document.getElementById('venues').innerHTML = venues.map(v => {
-                const detail = detailMap[v.id] ?? {};
-                const sched  = schedMap[v.id] ?? {};
-                const subs   = detail.subscriber_count ?? 0;
+                const sched = schedMap[v.id] ?? {};
+                const subs  = v.subscriber_count ?? 0;
 
                 let state, label;
-                if (!v.transcription_enabled) {
-                    state = 'paused'; label = 'Paused';
-                } else if (TOKEN) {
-                    state  = liveSet.has(v.id) ? 'live' : 'offline';
-                    label  = liveSet.has(v.id) ? 'Live'  : 'Offline';
-                } else {
-                    state = 'live'; label = 'Enabled';
-                }
+                if (!v.transcription_enabled) { state = 'paused';   label = 'Paused';  }
+                else if (v.is_live)            { state = 'live';     label = 'Live';    }
+                else                           { state = 'offline';  label = 'Offline'; }
+
+                const audioDrop = v.audio_drops ?? 0;
+                const distDrop  = v.distribution_drops ?? 0;
+                const anyDrops  = audioDrop + distDrop > 0;
+                const dropParts = [];
+                if (audioDrop > 0) dropParts.push(`${audioDrop} audio`);
+                if (distDrop  > 0) dropParts.push(`${distDrop} delivery`);
+                const dropsHtml = anyDrops
+                    ? `<div class="venue-drops">⚠ ${dropParts.join(' · ')} drop${audioDrop + distDrop !== 1 ? 's' : ''}</div>`
+                    : '';
 
                 const schedHtml = (sched.now || sched.next) ? `
                     <div class="schedule-block">
@@ -403,7 +417,7 @@
                             <span class="status-pill ${state}">${label}</span>
                         </div>
                         <div class="venue-subs"><strong>${subs}</strong> viewer${subs !== 1 ? 's' : ''}</div>
-                        ${schedHtml}
+                        ${dropsHtml}${schedHtml}
                         <div class="venue-links">
                             <a href="/v/${escapeHtml(v.id)}" target="_blank">Viewer</a>
                             <a href="/display/${escapeHtml(v.id)}" target="_blank">Display</a>
@@ -411,26 +425,22 @@
                     </div>`;
             }).join('');
 
-            document.getElementById('lastUpdated').textContent =
-                'Updated ' + new Date().toLocaleTimeString();
+            document.getElementById('lastUpdated').textContent = 'Updated ' + new Date().toLocaleTimeString();
 
         } catch (err) {
             console.error('Status refresh failed:', err);
-            document.getElementById('lastUpdated').textContent = 'Update failed — retrying…';
+            setError(true);
+            document.getElementById('lastUpdated').textContent = 'Update failed';
         }
     }
 
     // Countdown + auto-refresh every 15 s.
     const INTERVAL = 15;
     let countdown = INTERVAL;
-
     function tick() {
         countdown--;
         document.getElementById('refreshIn').textContent = countdown;
-        if (countdown <= 0) {
-            countdown = INTERVAL;
-            refresh();
-        }
+        if (countdown <= 0) { countdown = INTERVAL; refresh(); }
     }
 
     refresh();

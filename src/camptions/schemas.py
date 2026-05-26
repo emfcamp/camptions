@@ -173,3 +173,33 @@ class NowAndNext(BaseModel):
     venue_id: str
     now: Optional[ScheduleSlot] = None
     next: Optional[ScheduleSlot] = None
+
+
+class PublicVenueStatus(VenueResponse):
+    """Venue metadata enriched with current live status and runtime metrics."""
+
+    is_live: bool = Field(
+        False,
+        description=(
+            "True when both Pi audio is streaming and WhisperLive is handshaked "
+            "for this venue."
+        ),
+    )
+    subscriber_count: int = Field(
+        0,
+        description="Number of caption viewers currently connected to this venue.",
+    )
+    audio_drops: int = Field(
+        0,
+        description=(
+            "Audio chunks dropped from the ingest queue this session "
+            "(non-zero indicates the transcription pipeline is falling behind)."
+        ),
+    )
+    distribution_drops: int = Field(
+        0,
+        description=(
+            "Caption messages that could not be delivered to subscribers since "
+            "the server started (subscriber queue full or WS send failure)."
+        ),
+    )
