@@ -29,5 +29,19 @@ services:
       - wl
     restart: unless-stopped
 
+  mediamtx:
+    image: bluenviron/mediamtx:1.18.2
+    # Host networking bypasses Docker NAT — required for WebRTC because UDP
+    # ICE candidates have to round-trip cleanly. Ports 8889/tcp (WHIP/WHEP
+    # HTTP) and 8189/udp (ICE) are bound directly on the host. Linux/WSL2
+    # only — on Mac/Windows Docker Desktop, revert to bridge networking
+    # plus explicit MTX_WEBRTCADDITIONALHOSTS.
+    network_mode: host
+    environment:
+      - MTX_WEBRTCADDITIONALHOSTS
+    volumes:
+      - ./mediamtx/mediamtx.yml:/mediamtx.yml:ro
+    restart: unless-stopped
+
 volumes:
   whisper-cache:

@@ -1,0 +1,46 @@
+# MediaMTX config — WHIP ingest + WHEP egress for camptions stages.
+# Pinned image tag is set in docker-compose.yml.
+
+# Disable transports we don't use.
+rtsp: no
+rtmp: no
+hls: no
+srt: no
+
+# WebRTC (WHIP/WHEP) on :8889. ICE traffic is multiplexed onto single UDP
+# and TCP ports so we expose one of each. TCP is needed as a fallback for
+# environments where UDP fragmentation breaks DTLS handshake (notably WSL2,
+# which mangles large UDP packets through its NAT).
+webrtc: yes
+webrtcAddress: :8889
+webrtcLocalUDPAddress: :8189
+
+# MediaMTX is always behind NAT in Docker — its only interface IP is the
+# Docker bridge address (172.x.x.x), which clients on the host can't reach.
+# Set MTX_WEBRTCADDITIONALHOSTS in the root .env to a host the browser can
+# reach: 127.0.0.1 for local dev, your public DNS/IP in production.
+webrtcAdditionalHosts: []
+
+# TODO(auth): currently wide-open (anonymous publish + read + playback).
+# A two-user setup with a `publisher` account guarding publish failed because
+# MediaMTX's MTX_AUTHINTERNALUSERS_0_PASS env override appears to clobber the
+# whole users list rather than just the indexed field. Resolve before this
+# is reachable from the open internet — likely by hashing the password
+# (sha256:/argon2:) directly in this YAML rather than via env override.
+authMethod: internal
+authInternalUsers:
+  - user: any
+    pass:
+    ips: []
+    permissions:
+      - action: publish
+        path:
+      - action: read
+        path:
+      - action: playback
+        path:
+
+paths:
+  stage-a:
+  stage-b:
+  stage-c:
