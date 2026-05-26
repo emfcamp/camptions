@@ -131,7 +131,7 @@ MediaMTX provides WebRTC ingest (WHIP) from OBS and egress (WHEP) to browsers.
 | Stage B | `https://captions.emf.camp/stage-b/whep` |
 | Stage C | `https://captions.emf.camp/stage-c/whep` |
 
-> **HTTPS requirement** — browsers block mixed-content WebRTC: if the viewer is served over HTTPS, the WHEP URL must also be HTTPS. Terminate TLS at your reverse proxy and forward `/stage-*/whip` and `/stage-*/whep` to `localhost:8889`.
+> **HTTPS requirement** — browsers block mixed-content WebRTC: if the viewer is served over HTTPS, the WHEP URL must also be HTTPS. The included `nginx.conf` already proxies `/stage-*/whip` and `/stage-*/whep` to MediaMTX at `localhost:8889`, so the public WHEP URLs above work as-is once nginx is deployed.
 
 ## Raspberry Pi Setup
 
