@@ -57,6 +57,11 @@ uvicorn camptions.main:app --reload
                         │  SQLite   │
                         │  Database │
                         └───────────┘
+
+┌─────────────────┐     ┌─────────────────┐     ┌─────────────────┐
+│  OBS / Encoder  │────▶│    MediaMTX     │────▶│ Viewer (WHEP)   │
+│  (WHIP publish) │     │ (WebRTC relay)  │     │  in-browser     │
+└─────────────────┘     └─────────────────┘     └─────────────────┘
 ```
 
 ## API Endpoints
@@ -105,7 +110,28 @@ Environment variables (prefix with `CAMPTIONS_`):
 | `DEFAULT_VENUES` | `["stage-a", "stage-b", "stage-c"]` | Default venue IDs created by `init-venues` |
 | `CAPTION_RETENTION_HOURS` | `72` | Hours to retain caption data |
 
-Generate tokens with: `python3 -c "import secrets; print(secrets.token_hex(32))"`
+Generate camptions tokens with: `python3 -c "import secrets; print(secrets.token_hex(32))"`
+
+### MediaMTX (WHIP/WHEP)
+
+MediaMTX provides WebRTC ingest (WHIP) from OBS and egress (WHEP) to browsers.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WHIP_TOKEN` | *(required)* | Shared bearer password for OBS → MediaMTX WHIP publish. Generate with `openssl rand -hex 32`. |
+| `MTX_WEBRTCADDITIONALHOSTS` | *(required)* | Public hostname/IP browsers can reach MediaMTX on — needed because MediaMTX can only see its own Docker/host interfaces. Set to `127.0.0.1` for local dev; the server's public DNS name in production. |
+
+**OBS setup** — Service: **WHIP**, Server: `https://captions.emf.camp/stage-a/whip`, Bearer token: `publisher:<WHIP_TOKEN>`.
+
+**WHEP stream URLs** (set per-venue in the admin under "Presentation Stream"):
+
+| Stage | WHEP URL |
+|-------|----------|
+| Stage A | `https://captions.emf.camp/stage-a/whep` |
+| Stage B | `https://captions.emf.camp/stage-b/whep` |
+| Stage C | `https://captions.emf.camp/stage-c/whep` |
+
+> **HTTPS requirement** — browsers block mixed-content WebRTC: if the viewer is served over HTTPS, the WHEP URL must also be HTTPS. Terminate TLS at your reverse proxy and forward `/stage-*/whip` and `/stage-*/whep` to `localhost:8889`.
 
 ## Raspberry Pi Setup
 
@@ -168,9 +194,13 @@ sudo ./setup-full.sh
 
 ## Frontend Pages
 
-- `/` - Mobile viewer with venue selection
-- `/display?venue=stage-a` - Large screen display
-- `/admin` - Admin interface
+| URL | Description |
+|-----|-------------|
+| `/` | Mobile viewer — venue tabs, live captions, embedded stream toggle |
+| `/v/{venue_id}` | Viewer pre-selected to a specific venue |
+| `/display/{venue_id}` | Large-screen caption display |
+| `/admin` | Admin interface — venue controls, stream URL config |
+| `/status` | Public status board — venue live/offline state, subscriber counts, now/next schedule. Pass `?token=<ADMIN_TOKEN>` to show live vs offline distinction. |
 
 ### Display URL Parameters
 

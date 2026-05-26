@@ -538,6 +538,8 @@
                             <div class="venue-row">
                                 <span class="venue-name">${escapeHtml(v.name)}</span>
                                 <div class="venue-controls">
+                                    <a href="/v/${escapeHtml(v.id)}" target="_blank" class="btn-link" title="Open viewer">Viewer</a>
+                                    <a href="/display/${escapeHtml(v.id)}" target="_blank" class="btn-link" title="Open display">Display</a>
                                     <span class="status-badge ${statusClass}">${statusLabel}</span>
                                     <label class="toggle" title="Toggle transcription">
                                         <input type="checkbox" data-venue="${escapeHtml(v.id)}"

@@ -222,6 +222,11 @@ async def admin_page():
     return FileResponse(STATIC_DIR / "admin.html")
 
 
+@app.get("/status", include_in_schema=False)
+async def status_page():
+    return FileResponse(STATIC_DIR / "status.html")
+
+
 @app.get("/health")
 async def health():
     """Health check endpoint."""

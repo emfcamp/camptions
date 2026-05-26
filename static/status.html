@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>Electromagnetic Field 2026 — Captions Status</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+
+        :root {
+            --bg: #000000;
+            --surface: rgba(255,255,255,0.07);
+            --surface-hover: rgba(255,255,255,0.11);
+            --text: #ffffff;
+            --muted: #a8b3d4;
+            --accent: #F77F02;
+            --live: #2AE28C;
+            --offline: #a8b3d4;
+            --paused: #F9E200;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--text);
+            font-family: 'Raleway', 'Trebuchet MS', sans-serif;
+            min-height: 100vh;
+            padding: 2rem;
+        }
+
+        body::before {
+            content: '';
+            position: fixed;
+            inset: 0;
+            background-image: url('/static/bg-2.png');
+            background-size: cover;
+            background-position: center;
+            opacity: 0.08;
+            pointer-events: none;
+            z-index: 0;
+        }
+
+        .container {
+            position: relative;
+            z-index: 1;
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        /* ── Header ─────────────────────────────────── */
+        header {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .header-title {
+            display: flex;
+            flex-direction: column;
+            line-height: 1.2;
+        }
+
+        .header-eyebrow {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        header h1 {
+            font-size: 1.75rem;
+            font-weight: 700;
+        }
+
+        header h1 span { color: var(--accent); }
+
+        .header-meta {
+            font-size: 0.8rem;
+            color: var(--muted);
+            text-align: right;
+        }
+
+        #refreshIn { font-variant-numeric: tabular-nums; }
+
+        /* ── System totals bar ───────────────────────── */
+        .totals {
+            display: flex;
+            gap: 2rem;
+            flex-wrap: wrap;
+            background: var(--surface);
+            border-radius: 0.5rem;
+            padding: 1rem 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .total-item {
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
+        }
+
+        .total-label {
+            font-size: 0.7rem;
+            font-weight: 600;
+            color: var(--muted);
+            text-transform: uppercase;
+            letter-spacing: 0.07em;
+        }
+
+        .total-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+        }
+
+        /* ── Venue grid ──────────────────────────────── */
+        .venues {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 1.25rem;
+        }
+
+        .venue-card {
+            background: var(--surface);
+            border-radius: 0.5rem;
+            padding: 1.25rem 1.5rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+            border-left: 3px solid transparent;
+            transition: border-color 0.3s;
+        }
+
+        .venue-card.live   { border-left-color: var(--live); }
+        .venue-card.paused { border-left-color: var(--paused); }
+        .venue-card.offline { border-left-color: var(--offline); }
+
+        .venue-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+        }
+
+        .venue-name {
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+
+        .status-pill {
+            font-size: 0.7rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            padding: 0.25rem 0.75rem;
+            border-radius: 1rem;
+        }
+
+        .status-pill.live    { background: rgba(42,226,140,0.15); color: var(--live); }
+        .status-pill.paused  { background: rgba(249,226,0,0.12);  color: var(--paused); }
+        .status-pill.offline { background: rgba(168,179,212,0.12); color: var(--offline); }
+
+        .venue-meta {
+            font-size: 0.8rem;
+            color: var(--muted);
+        }
+
+        .venue-subs {
+            font-size: 0.85rem;
+            color: var(--muted);
+        }
+
+        .venue-subs strong { color: var(--text); }
+
+        /* ── Schedule ────────────────────────────────── */
+        .schedule-block {
+            display: flex;
+            flex-direction: column;
+            gap: 0.35rem;
+            border-top: 1px solid rgba(255,255,255,0.08);
+            padding-top: 0.65rem;
+        }
+
+        .schedule-row {
+            display: grid;
+            grid-template-columns: 2.5rem 1fr;
+            gap: 0.4rem;
+            font-size: 0.8rem;
+        }
+
+        .schedule-tag {
+            font-size: 0.65rem;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.08em;
+            color: var(--accent);
+            padding-top: 0.05rem;
+        }
+
+        .schedule-row.next .schedule-tag { color: var(--muted); }
+
+        .schedule-title {
+            font-weight: 600;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .schedule-speaker {
+            color: var(--muted);
+            font-size: 0.75rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .schedule-time {
+            color: var(--muted);
+            font-size: 0.7rem;
+        }
+
+        /* ── Viewer link ─────────────────────────────── */
+        .venue-links {
+            display: flex;
+            gap: 0.75rem;
+            padding-top: 0.25rem;
+        }
+
+        .venue-links a {
+            font-size: 0.75rem;
+            color: var(--accent);
+            text-decoration: underline;
+            opacity: 0.8;
+        }
+
+        .venue-links a:hover { opacity: 1; }
+
+        /* ── Empty / error states ────────────────────── */
+        .loading {
+            color: var(--muted);
+            text-align: center;
+            padding: 3rem;
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+
+<body>
+<div class="container">
+
+    <header>
+        <div class="header-title">
+            <span class="header-eyebrow">Electromagnetic Field 2026</span>
+            <h1>Captions <span>Status</span></h1>
+        </div>
+        <div class="header-meta">
+            <div id="lastUpdated">Loading…</div>
+            <div>Refreshes in <span id="refreshIn">15</span>s</div>
+        </div>
+    </header>
+
+    <div class="totals" id="totals">
+        <div class="total-item">
+            <span class="total-label">Venues live</span>
+            <span class="total-value" id="totLive">—</span>
+        </div>
+        <div class="total-item">
+            <span class="total-label">Total viewers</span>
+            <span class="total-value" id="totSubs">—</span>
+        </div>
+        <div class="total-item">
+            <span class="total-label">Segments today</span>
+            <span class="total-value" id="totSegments">—</span>
+        </div>
+    </div>
+
+    <div class="venues" id="venues">
+        <div class="loading">Loading venue data…</div>
+    </div>
+
+</div>
+
+<script>
+    // Optional admin token from URL: /status?token=xxx gives richer live/offline info.
+    const params = new URLSearchParams(location.search);
+    const TOKEN  = params.get('token') || '';
+
+    function authHeaders() {
+        return TOKEN ? { 'Authorization': `Bearer ${TOKEN}` } : {};
+    }
+
+    function escapeHtml(s) {
+        return String(s ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;');
+    }
+
+    function fmtTime(iso) {
+        if (!iso) return '';
+        try {
+            return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        } catch { return iso; }
+    }
+
+    function scheduleBlock(slot, tag) {
+        if (!slot || !slot.title) return '';
+        const time = slot.start_time ? `<span class="schedule-time">${fmtTime(slot.start_time)}</span>` : '';
+        const speaker = slot.speaker ? `<div class="schedule-speaker">${escapeHtml(slot.speaker)}</div>` : '';
+        return `
+            <div class="schedule-row ${tag.toLowerCase()}">
+                <span class="schedule-tag">${tag}</span>
+                <div>
+                    <div class="schedule-title">${escapeHtml(slot.title)}</div>
+                    ${speaker}
+                    ${time}
+                </div>
+            </div>`;
+    }
+
+    async function refresh() {
+        try {
+            // --- fetch everything in parallel ---
+            const [venuesRes, schedRes, adminStatsRes] = await Promise.all([
+                fetch('/api/venues'),
+                fetch('/api/schedule/now-and-next'),
+                TOKEN ? fetch('/api/admin/stats', { headers: authHeaders() }) : Promise.resolve(null),
+            ]);
+
+            const venues   = await venuesRes.json();
+            const schedule = await schedRes.json();  // list of NowAndNext
+            const adminStats = adminStatsRes ? await adminStatsRes.json() : null;
+
+            // Subscriber counts per venue — all public, run in parallel.
+            const details = await Promise.all(
+                venues.map(v => fetch(`/api/venues/${encodeURIComponent(v.id)}`).then(r => r.json()))
+            );
+
+            // Build lookup maps.
+            const schedMap = {};
+            for (const s of (Array.isArray(schedule) ? schedule : [])) {
+                schedMap[s.venue_id] = s;
+            }
+            const detailMap = {};
+            for (const d of details) {
+                detailMap[d.id] = d;
+            }
+            const liveSet = new Set(adminStats?.venues?.active_list ?? []);
+
+            // Totals.
+            let totalSubs = 0;
+            let totalLive = 0;
+            for (const v of venues) {
+                const subs = detailMap[v.id]?.subscriber_count ?? 0;
+                totalSubs += subs;
+                const isLive = TOKEN
+                    ? liveSet.has(v.id)
+                    : v.transcription_enabled;
+                if (isLive) totalLive++;
+            }
+
+            document.getElementById('totLive').textContent = TOKEN
+                ? `${totalLive} / ${venues.length}`
+                : `${venues.filter(v => v.transcription_enabled).length} enabled`;
+            document.getElementById('totSubs').textContent = totalSubs;
+            document.getElementById('totSegments').textContent =
+                adminStats ? (adminStats.segments?.total ?? '—').toLocaleString() : '—';
+
+            // Venue cards.
+            document.getElementById('venues').innerHTML = venues.map(v => {
+                const detail = detailMap[v.id] ?? {};
+                const sched  = schedMap[v.id] ?? {};
+                const subs   = detail.subscriber_count ?? 0;
+
+                let state, label;
+                if (!v.transcription_enabled) {
+                    state = 'paused'; label = 'Paused';
+                } else if (TOKEN) {
+                    state  = liveSet.has(v.id) ? 'live' : 'offline';
+                    label  = liveSet.has(v.id) ? 'Live'  : 'Offline';
+                } else {
+                    state = 'live'; label = 'Enabled';
+                }
+
+                const schedHtml = (sched.now || sched.next) ? `
+                    <div class="schedule-block">
+                        ${scheduleBlock(sched.now, 'Now')}
+                        ${scheduleBlock(sched.next, 'Next')}
+                    </div>` : '';
+
+                return `
+                    <div class="venue-card ${state}">
+                        <div class="venue-header">
+                            <span class="venue-name">${escapeHtml(v.name)}</span>
+                            <span class="status-pill ${state}">${label}</span>
+                        </div>
+                        <div class="venue-subs"><strong>${subs}</strong> viewer${subs !== 1 ? 's' : ''}</div>
+                        ${schedHtml}
+                        <div class="venue-links">
+                            <a href="/v/${escapeHtml(v.id)}" target="_blank">Viewer</a>
+                            <a href="/display/${escapeHtml(v.id)}" target="_blank">Display</a>
+                        </div>
+                    </div>`;
+            }).join('');
+
+            document.getElementById('lastUpdated').textContent =
+                'Updated ' + new Date().toLocaleTimeString();
+
+        } catch (err) {
+            console.error('Status refresh failed:', err);
+            document.getElementById('lastUpdated').textContent = 'Update failed — retrying…';
+        }
+    }
+
+    // Countdown + auto-refresh every 15 s.
+    const INTERVAL = 15;
+    let countdown = INTERVAL;
+
+    function tick() {
+        countdown--;
+        document.getElementById('refreshIn').textContent = countdown;
+        if (countdown <= 0) {
+            countdown = INTERVAL;
+            refresh();
+        }
+    }
+
+    refresh();
+    setInterval(tick, 1000);
+</script>
+</body>
+</html>
