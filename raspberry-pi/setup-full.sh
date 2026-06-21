@@ -27,8 +27,8 @@ fi
 
 # Get configuration
 read -p "Enter venue ID (e.g., stage-a): " VENUE_ID
-read -p "Enter server URL [https://captions.emf.camp]: " SERVER_URL
-SERVER_URL="${SERVER_URL:-https://captions.emf.camp}"
+read -p "Enter server URL [https://stages.emf.camp]: " SERVER_URL
+SERVER_URL="${SERVER_URL:-https://stages.emf.camp}"
 
 export CAMPTIONS_VENUE="$VENUE_ID"
 export CAMPTIONS_SERVER="${SERVER_URL/https:/wss:}"

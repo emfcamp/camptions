@@ -64,27 +64,27 @@ Build viewers, archives, accessibility tooling, fun side projects.
 Stream a venue's live captions over SSE (no client library needed):
 
 ```
-curl -N https://captions.emf.camp/api/captions/stream/stage-a/sse
+curl -N https://stages.emf.camp/api/captions/stream/stage-a/sse
 ```
 
 Or via WebSocket:
 
 ```js
-new WebSocket('wss://captions.emf.camp/api/captions/stream/stage-a')
+new WebSocket('wss://stages.emf.camp/api/captions/stream/stage-a')
   .onmessage = e => console.log(JSON.parse(e.data));
 ```
 
 Fetch the recent caption history for a venue:
 
 ```
-curl 'https://captions.emf.camp/api/captions/history/stage-a?limit=100'
+curl 'https://stages.emf.camp/api/captions/history/stage-a?limit=100'
 ```
 
 List venues and the current EMF schedule:
 
 ```
-curl https://captions.emf.camp/api/venues
-curl https://captions.emf.camp/api/schedule/now-and-next
+curl https://stages.emf.camp/api/venues
+curl https://stages.emf.camp/api/schedule/now-and-next
 ```
 
 ### Streaming protocol

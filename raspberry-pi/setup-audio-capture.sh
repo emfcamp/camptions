@@ -12,7 +12,7 @@ set -e
 
 # Configuration
 CAMPTIONS_DIR="/opt/camptions"
-CAMPTIONS_SERVER="${CAMPTIONS_SERVER:-ws://captions.emf.camp}"
+CAMPTIONS_SERVER="${CAMPTIONS_SERVER:-ws://stages.emf.camp}"
 CAMPTIONS_VENUE="${CAMPTIONS_VENUE:-stage-a}"
 
 echo "========================================"

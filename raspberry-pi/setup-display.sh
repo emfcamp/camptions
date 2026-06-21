@@ -11,7 +11,7 @@
 set -e
 
 # Configuration
-CAMPTIONS_URL="${CAMPTIONS_URL:-https://captions.emf.camp/display}"
+CAMPTIONS_URL="${CAMPTIONS_URL:-https://stages.emf.camp/display}"
 CAMPTIONS_VENUE="${CAMPTIONS_VENUE:-stage-a}"
 DISPLAY_ROTATION="${DISPLAY_ROTATION:-normal}"  # normal, left, right, inverted
 
@@ -116,7 +116,7 @@ unclutter -idle 0.5 -root &
 sleep 5
 
 # Build the caption display URL
-CAPTION_URL="\${CAMPTIONS_URL:-https://captions.emf.camp/display}?venue=\${CAMPTIONS_VENUE:-stage-a}&mode=\${DISPLAY_MODE:-dark}"
+CAPTION_URL="\${CAMPTIONS_URL:-https://stages.emf.camp/display}?venue=\${CAMPTIONS_VENUE:-stage-a}&mode=\${DISPLAY_MODE:-dark}"
 
 if [ -n "\$FONT_SIZE" ]; then
     CAPTION_URL="\${CAPTION_URL}&fontSize=\${FONT_SIZE}"

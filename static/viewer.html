@@ -330,25 +330,12 @@
             margin-top: 0.1rem;
         }
 
-        .next-talk {
-            margin-top: 0.5rem;
-            padding-top: 0.5rem;
-            border-top: 1px solid rgba(255, 255, 255, 0.08);
-            font-size: 0.75rem;
-            color: var(--text-muted);
-        }
-
-        .next-talk-label {
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            font-size: 0.65rem;
-            font-weight: 600;
-            margin-bottom: 0.1rem;
-        }
-
-        .next-detail {
-            color: var(--text-muted);
-            font-size: 0.7rem;
+        /* nowPlaying lives at flex level, always visible regardless of mode */
+        #nowPlaying {
+            flex: none;
+            position: relative;
+            z-index: 80;
+            margin: 0.5rem 1rem 0;
         }
 
         /* Empty state */
@@ -468,6 +455,102 @@
         .stream-btn.off {
             opacity: 0.5;
         }
+
+        .right-controls {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+        }
+
+        /* First-load mode selection modal */
+        .mode-modal {
+            position: fixed;
+            inset: 0;
+            background: rgba(0, 0, 0, 0.85);
+            z-index: 200;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 1.5rem;
+        }
+
+        .mode-modal[hidden] {
+            display: none;
+        }
+
+        .mode-modal-card {
+            background: #111827;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 1rem;
+            padding: 2rem 1.5rem;
+            max-width: 360px;
+            width: 100%;
+        }
+
+        body.light .mode-modal-card {
+            background: #f5f5f5;
+            border-color: rgba(0, 0, 0, 0.1);
+        }
+
+        .mode-modal-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            text-align: center;
+            margin-bottom: 1.5rem;
+        }
+
+        .mode-options {
+            display: flex;
+            flex-direction: column;
+            gap: 0.75rem;
+        }
+
+        .mode-option {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem 1.25rem;
+            border-radius: 0.75rem;
+            background: var(--bg-color);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: var(--text-color);
+            cursor: pointer;
+            text-align: left;
+            transition: border-color 0.15s, background 0.15s;
+            width: 100%;
+            font-family: inherit;
+        }
+
+        body.light .mode-option {
+            border-color: rgba(0, 0, 0, 0.12);
+        }
+
+        .mode-option:hover {
+            border-color: var(--accent-color);
+            background: rgba(247, 127, 2, 0.08);
+        }
+
+        .mode-option-icon {
+            font-size: 1.75rem;
+            flex-shrink: 0;
+            line-height: 1;
+        }
+
+        .mode-option-text {
+            display: flex;
+            flex-direction: column;
+            gap: 0.15rem;
+        }
+
+        .mode-option-label {
+            font-weight: 600;
+            font-size: 0.95rem;
+        }
+
+        .mode-option-desc {
+            font-size: 0.78rem;
+            color: var(--text-muted);
+        }
     </style>
 </head>
 
@@ -521,19 +604,14 @@
         </div>
     </div>
 
+    <div id="nowPlaying" class="now-playing" style="display:none">
+        <div class="now-playing-label">Scheduled Now</div>
+        <div class="now-playing-title" id="nowTitle"></div>
+        <div class="now-playing-speaker" id="nowSpeaker"></div>
+        <div class="now-playing-time" id="nowTime"></div>
+    </div>
+
     <main id="mainScroll">
-        <div id="nowPlaying" class="now-playing" style="display:none">
-            <div class="now-playing-label">Now playing</div>
-            <div class="now-playing-title" id="nowTitle"></div>
-            <div class="now-playing-speaker" id="nowSpeaker"></div>
-            <div class="now-playing-time" id="nowTime"></div>
-            <div class="next-talk" id="nextTalk" style="display:none">
-                <div class="next-talk-label">Up next</div>
-                <div id="nextTitle"></div>
-                <div id="nextSpeaker" class="next-detail"></div>
-                <div id="nextTime" class="next-detail"></div>
-            </div>
-        </div>
         <div id="captionsInner">
             <div class="empty-state" id="emptyState">
                 <div class="empty-state-icon" id="emptyIcon">&#9201;</div>
@@ -559,9 +637,41 @@
                 <button class="font-btn" id="fontIncrease">A+</button>
                 <button class="stream-btn" id="streamToggle" hidden title="Toggle video">📺</button>
             </div>
-            <button class="theme-toggle" id="themeToggle">&#127769;</button>
+            <div class="right-controls">
+                <button class="theme-toggle" id="settingsBtn" title="View preferences">⚙️</button>
+                <button class="theme-toggle" id="themeToggle">&#127769;</button>
+            </div>
         </div>
     </footer>
+
+    <div id="modeModal" class="mode-modal" hidden>
+        <div class="mode-modal-card">
+            <h2 class="mode-modal-title">What would you like to see?</h2>
+            <div class="mode-options">
+                <button class="mode-option" data-mode="captions">
+                    <span class="mode-option-icon">💬</span>
+                    <span class="mode-option-text">
+                        <span class="mode-option-label">Captions</span>
+                        <span class="mode-option-desc">Live transcription only</span>
+                    </span>
+                </button>
+                <button class="mode-option" data-mode="stream">
+                    <span class="mode-option-icon">📺</span>
+                    <span class="mode-option-text">
+                        <span class="mode-option-label">Presentation Stream</span>
+                        <span class="mode-option-desc">Content from projector screens</span>
+                    </span>
+                </button>
+                <button class="mode-option" data-mode="both">
+                    <span class="mode-option-icon">🎬</span>
+                    <span class="mode-option-text">
+                        <span class="mode-option-label">Both</span>
+                        <span class="mode-option-desc">Content and captions</span>
+                    </span>
+                </button>
+            </div>
+        </div>
+    </div>
 
     <script src="/static/captions-client.js"></script>
     <script src="/static/stream-player.js"></script>
@@ -589,7 +699,8 @@
         let userScrolledUp = false;
         let fontSize = parseFloat(localStorage.getItem('fontSize')) || 1;
         let isDarkMode = localStorage.getItem('theme') !== 'light';
-        let streamWanted = localStorage.getItem('streamVisible') !== 'false';
+        let viewerMode = null;
+        let streamWanted = false;
         /** @type {WhepPlayer|null} */
         let streamPlayer = null;
 
@@ -629,6 +740,28 @@
             document.body.classList.toggle('light', !isDarkMode);
             document.documentElement.style.setProperty('--caption-font-size', `${fontSize}rem`);
             document.getElementById('themeToggle').textContent = isDarkMode ? '🌙' : '☀️';
+        }
+
+        function showModeModal() {
+            document.getElementById('modeModal').hidden = false;
+        }
+
+        function hideModeModal() {
+            document.getElementById('modeModal').hidden = true;
+        }
+
+        function applyViewerMode(mode) {
+            viewerMode = mode;
+            localStorage.setItem('viewerMode', mode);
+            mainScrollEl.style.display = mode === 'stream' ? 'none' : '';
+            streamWanted = mode === 'stream' || mode === 'both';
+            // If a client is already running, apply stream change immediately.
+            // Otherwise switchVenue() will call startStreamIfWanted() on init.
+            if (client !== null) {
+                if (streamWanted) startStreamIfWanted();
+                else teardownStream();
+                applyStreamToggleUi();
+            }
         }
 
         async function fetchVenues() {
@@ -830,7 +963,6 @@
                 },
                 onScheduleUpdate(data) {
                     const nowPlaying = document.getElementById('nowPlaying');
-                    const nextTalk = document.getElementById('nextTalk');
                     if (!data.now || !data.now.title) {
                         nowPlaying.style.display = 'none';
                         return;
@@ -840,14 +972,6 @@
                     document.getElementById('nowTime').textContent =
                         data.now.start_time && data.now.end_time
                             ? `${data.now.start_time} – ${data.now.end_time}` : '';
-                    if (data.next && data.next.title) {
-                        document.getElementById('nextTitle').textContent = data.next.title;
-                        document.getElementById('nextSpeaker').textContent = data.next.speaker || '';
-                        document.getElementById('nextTime').textContent = data.next.start_time || '';
-                        nextTalk.style.display = 'block';
-                    } else {
-                        nextTalk.style.display = 'none';
-                    }
                     nowPlaying.style.display = 'block';
                 },
                 onNewBlock,
@@ -913,16 +1037,30 @@
 
         streamToggleEl.addEventListener('click', () => {
             streamWanted = !streamWanted;
-            localStorage.setItem('streamVisible', streamWanted ? 'true' : 'false');
             applyStreamToggleUi();
             if (streamWanted) startStreamIfWanted();
             else teardownStream();
         });
 
+        document.getElementById('modeModal').addEventListener('click', e => {
+            const btn = e.target.closest('.mode-option');
+            if (!btn) return;
+            hideModeModal();
+            applyViewerMode(btn.dataset.mode);
+        });
+
+        document.getElementById('settingsBtn').addEventListener('click', showModeModal);
+
         async function init() {
             await fetchVenues();
             renderVenueTabs();
             applyTheme();
+            const savedMode = localStorage.getItem('viewerMode');
+            if (savedMode) {
+                applyViewerMode(savedMode);
+            } else {
+                showModeModal();
+            }
             switchVenue(currentVenue);
         }
 

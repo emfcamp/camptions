@@ -73,7 +73,7 @@ committed segment exactly once within a session. Across sessions,
 ### Example
 
 ```js
-const ws = new WebSocket('wss://captions.emf.camp/api/captions/stream/stage-a');
+const ws = new WebSocket('wss://stages.emf.camp/api/captions/stream/stage-a');
 ws.onmessage = e => {
     const msg = JSON.parse(e.data);
     if (msg.type === 'committed') console.log(msg.text);
@@ -159,7 +159,7 @@ async def caption_stream_sse(venue_id: str) -> StreamingResponse:
     Curl-friendly:
 
     ```
-    curl -N https://captions.emf.camp/api/captions/stream/stage-a/sse
+    curl -N https://stages.emf.camp/api/captions/stream/stage-a/sse
     ```
 
     The endpoint emits an SSE comment (`: keepalive`) every 15s so proxies

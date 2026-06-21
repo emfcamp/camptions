@@ -219,6 +219,40 @@
             flex-shrink: 0;
             font-size: 0.9em;
         }
+
+        /* Operator caption toggle — top-left, fades to near-invisible at rest */
+        #captionToggle {
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            z-index: 100;
+            padding: 0.4rem 0.8rem;
+            border-radius: 2rem;
+            background: rgba(0, 0, 0, 0.55);
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            color: #fff;
+            font-size: 0.75rem;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            opacity: 0.2;
+            transition: opacity 0.2s;
+            white-space: nowrap;
+        }
+
+        #captionToggle:hover {
+            opacity: 1;
+        }
+
+        body.light #captionToggle {
+            background: rgba(255, 255, 255, 0.7);
+            border-color: rgba(0, 0, 0, 0.2);
+            color: #000730;
+        }
+
+        #captionsInner.captions-hidden {
+            visibility: hidden;
+        }
     </style>
 </head>
 
@@ -229,6 +263,7 @@
         <span class="talk-time" id="talkTime"></span>
         <span class="talk-next" id="talkNext"></span>
     </div>
+    <button id="captionToggle">Captions ✓</button>
     <div id="status" class="disconnected">Connecting...</div>
     <div id="pausedBanner" hidden>Transcription paused</div>
     <div id="captions" role="region" aria-live="polite" aria-label="Live captions">
@@ -259,7 +294,7 @@
         const mode = params.get('mode') || 'dark';
         const fontSize = params.get('fontSize');
 
-        const qrUrl = `https://captions.emf.camp/v/${encodeURIComponent(venue)}`;
+        const qrUrl = `https://stages.emf.camp/v/${encodeURIComponent(venue)}`;
         new QRCode(document.getElementById('qrCode'), {
             text: qrUrl,
             width: 128,
@@ -358,6 +393,23 @@
             if (!document.fullscreenElement) document.documentElement.requestFullscreen();
             else document.exitFullscreen();
         });
+
+        // Caption visibility toggle — persisted in localStorage
+        const captionToggleEl = document.getElementById('captionToggle');
+        let captionsVisible = localStorage.getItem('displayCaptionsVisible') !== 'false';
+
+        function applyCaptionVisibility() {
+            captionsInner.classList.toggle('captions-hidden', !captionsVisible);
+            captionToggleEl.textContent = captionsVisible ? 'Captions ✓' : 'Captions ✗';
+        }
+
+        captionToggleEl.addEventListener('click', () => {
+            captionsVisible = !captionsVisible;
+            localStorage.setItem('displayCaptionsVisible', captionsVisible ? 'true' : 'false');
+            applyCaptionVisibility();
+        });
+
+        applyCaptionVisibility();
     </script>
 </body>
 
