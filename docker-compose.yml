@@ -1,6 +1,14 @@
 services:
   wl:
-    image: ghcr.io/collabora/whisperlive-cpu:latest
+    build:
+      dockerfile: Dockerfile.cuda
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     command: >
       python3 run_server.py
       --port 9090
@@ -18,7 +26,7 @@ services:
     environment:
       - CAMPTIONS_DATABASE_URL=sqlite+aiosqlite:///./data/camptions.db
       - CAMPTIONS_WL_URL=ws://wl:9090
-      - CAMPTIONS_WHISPER_MODEL=small.en
+      - CAMPTIONS_WHISPER_MODEL=medium.en
       - CAMPTIONS_WHISPER_LANGUAGE=en
       - CAMPTIONS_ADMIN_TOKEN
       - CAMPTIONS_INGEST_TOKEN

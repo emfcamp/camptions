@@ -67,3 +67,5 @@ Thumbs.db
 # Whisper models cache
 .cache/
 model/
+
+whisper_live/

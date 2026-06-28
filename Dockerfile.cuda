@@ -1,0 +1,22 @@
+FROM nvidia/cuda:12.3.2-cudnn9-runtime-ubuntu22.04
+
+ARG DEBIAN_FRONTEND=noninteractive
+
+# install lib required for pyaudio
+RUN apt update && apt install -y portaudio19-dev python3 python3-pip && apt-get clean && rm -rf /var/lib/apt/lists/*
+
+# update pip to support for whl.metadata -> less downloading
+RUN pip install --no-cache-dir -U "pip>=24"
+
+# create a working directory
+RUN mkdir /app
+WORKDIR /app
+
+# install the requirements for running the whisper-live server
+COPY server.txt /app/
+RUN pip install --no-cache-dir -r server.txt && rm server.txt
+
+COPY whisper_live /app/whisper_live
+COPY run_server.py /app
+
+CMD ["python", "run_server.py"]
