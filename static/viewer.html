@@ -432,34 +432,17 @@
             font-size: 0.875rem;
         }
 
-        .stream-btn {
-            margin-left: 0.5rem;
-            padding: 0.5rem 0.75rem;
-            border-radius: 0.5rem;
-            background: var(--bg-color);
-            border: 1px solid var(--text-muted);
-            color: var(--text-color);
-            cursor: pointer;
-            font-size: 1.1rem;
-            line-height: 1;
-        }
-
-        .stream-btn:hover {
-            border-color: var(--text-color);
-        }
-
-        .stream-btn[hidden] {
-            display: none;
-        }
-
-        .stream-btn.off {
-            opacity: 0.5;
-        }
-
         .right-controls {
             display: flex;
             gap: 0.5rem;
             align-items: center;
+        }
+
+        /* In stream-only mode the stream fills remaining space so the footer stays pinned */
+        body.stream-only #streamContainer {
+            flex: 1 1 0;
+            max-height: none;
+            aspect-ratio: unset;
         }
 
         /* First-load mode selection modal */
@@ -596,19 +579,19 @@
         <div class="venue-tabs" id="venueTabs"></div>
     </nav>
 
+    <div id="nowPlaying" class="now-playing" style="display:none">
+        <div class="now-playing-label">Scheduled Now</div>
+        <div class="now-playing-title" id="nowTitle"></div>
+        <div class="now-playing-speaker" id="nowSpeaker"></div>
+        <div class="now-playing-time" id="nowTime"></div>
+    </div>
+
     <div id="streamContainer">
         <video id="streamVideo" autoplay playsinline muted></video>
         <div id="streamOverlay" hidden>
             <div id="streamOverlayIcon"></div>
             <div id="streamOverlayText"></div>
         </div>
-    </div>
-
-    <div id="nowPlaying" class="now-playing" style="display:none">
-        <div class="now-playing-label">Scheduled Now</div>
-        <div class="now-playing-title" id="nowTitle"></div>
-        <div class="now-playing-speaker" id="nowSpeaker"></div>
-        <div class="now-playing-time" id="nowTime"></div>
     </div>
 
     <main id="mainScroll">
@@ -635,7 +618,6 @@
             <div class="font-controls">
                 <button class="font-btn" id="fontDecrease">A-</button>
                 <button class="font-btn" id="fontIncrease">A+</button>
-                <button class="stream-btn" id="streamToggle" hidden title="Toggle video">📺</button>
             </div>
             <div class="right-controls">
                 <button class="theme-toggle" id="settingsBtn" title="View preferences">⚙️</button>
@@ -693,7 +675,6 @@
         const jumpBtn = document.getElementById('jumpToBottomBtn');
         const streamContainerEl = document.getElementById('streamContainer');
         const streamVideoEl = document.getElementById('streamVideo');
-        const streamToggleEl = document.getElementById('streamToggle');
 
         const SCROLL_BOTTOM_THRESHOLD = 80;  // px from bottom still considered "at bottom"
         let userScrolledUp = false;
@@ -754,13 +735,13 @@
             viewerMode = mode;
             localStorage.setItem('viewerMode', mode);
             mainScrollEl.style.display = mode === 'stream' ? 'none' : '';
+            document.body.classList.toggle('stream-only', mode === 'stream');
             streamWanted = mode === 'stream' || mode === 'both';
             // If a client is already running, apply stream change immediately.
             // Otherwise switchVenue() will call startStreamIfWanted() on init.
             if (client !== null) {
                 if (streamWanted) startStreamIfWanted();
                 else teardownStream();
-                applyStreamToggleUi();
             }
         }
 
@@ -792,19 +773,6 @@
         }
 
         let streamHasEverConnected = false;
-
-        function applyStreamToggleUi() {
-            const hasUrl = !!currentVenueStreamUrl();
-            // Hide while the stream is wanted but hasn't connected yet — no
-            // point offering "hide video" before there's anything to hide.
-            // But keep visible when the stream is intentionally off so the
-            // user can always re-enable it; don't trap them with no button.
-            const live = streamWanted && streamHasEverConnected;
-            streamToggleEl.hidden = !hasUrl || (streamWanted && !streamHasEverConnected);
-            streamToggleEl.classList.toggle('off', !live);
-            streamToggleEl.setAttribute('aria-pressed', live ? 'true' : 'false');
-            streamToggleEl.title = live ? 'Hide video' : 'Show video';
-        }
 
         function teardownStream() {
             if (streamPlayer) {
@@ -845,7 +813,6 @@
                         streamHasEverConnected = true;
                         setStreamVisible(true);
                         setStreamOverlay(null);
-                        applyStreamToggleUi();
                     } else if (streamHasEverConnected) {
                         if (state === 'failed') {
                             setStreamOverlay('📡', 'Stream unavailable — retrying…');
@@ -930,7 +897,6 @@
 
             if (client) client.destroy();
             teardownStream();
-            applyStreamToggleUi();
             startStreamIfWanted();
 
             // Reset caption area
@@ -1033,13 +999,6 @@
             isDarkMode = !isDarkMode;
             localStorage.setItem('theme', isDarkMode ? 'dark' : 'light');
             applyTheme();
-        });
-
-        streamToggleEl.addEventListener('click', () => {
-            streamWanted = !streamWanted;
-            applyStreamToggleUi();
-            if (streamWanted) startStreamIfWanted();
-            else teardownStream();
         });
 
         document.getElementById('modeModal').addEventListener('click', e => {
