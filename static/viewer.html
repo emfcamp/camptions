@@ -733,11 +733,22 @@
         }
 
         function showModeModal() {
+            if (!currentVenueStreamUrl()) return;
             document.getElementById('modeModal').hidden = false;
         }
 
         function hideModeModal() {
             document.getElementById('modeModal').hidden = true;
+        }
+
+        function updateModeForVenue() {
+            const hasStream = !!currentVenueStreamUrl();
+            document.getElementById('settingsBtn').style.display = hasStream ? '' : 'none';
+            if (!hasStream && streamWanted) {
+                streamWanted = false;
+                mainScrollEl.style.display = '';
+                document.body.classList.remove('stream-only');
+            }
         }
 
         function applyViewerMode(mode) {
@@ -906,6 +917,7 @@
 
             if (client) client.destroy();
             teardownStream();
+            updateModeForVenue();
             startStreamIfWanted();
 
             // Reset caption area
@@ -1024,7 +1036,9 @@
             renderVenueTabs();
             applyTheme();
             const savedMode = localStorage.getItem('viewerMode');
-            if (savedMode) {
+            if (!currentVenueStreamUrl()) {
+                applyViewerMode('captions');
+            } else if (savedMode) {
                 applyViewerMode(savedMode);
             } else {
                 showModeModal();
