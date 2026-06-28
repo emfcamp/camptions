@@ -3,6 +3,11 @@ name: Deploy API docs
 on:
   push:
     branches: [main]
+    paths:
+      - 'src/camptions/**'
+      - 'scripts/export_openapi.py'
+      - 'docs/**'
+      - 'pyproject.toml'
   workflow_dispatch:
 
 permissions:
