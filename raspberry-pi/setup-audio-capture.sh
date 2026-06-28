@@ -12,7 +12,7 @@ set -e
 
 # Configuration
 CAMPTIONS_DIR="/opt/camptions"
-CAMPTIONS_SERVER="${CAMPTIONS_SERVER:-ws://stages.emf.camp}"
+CAMPTIONS_SERVER="${CAMPTIONS_SERVER:-wss://stages.emf.camp}"
 CAMPTIONS_VENUE="${CAMPTIONS_VENUE:-stage-a}"
 
 echo "========================================"
@@ -82,7 +82,7 @@ EnvironmentFile=$CAMPTIONS_DIR/config.env
 ExecStart=/usr/bin/python3 $CAMPTIONS_DIR/capture_client.py \\
     --server "\${CAMPTIONS_SERVER}" \\
     --venue "\${CAMPTIONS_VENUE}" \\
-    \${CAMPTIONS_TOKEN:+--token "\${CAMPTIONS_TOKEN}"}
+    --token "\${CAMPTIONS_TOKEN}"
 Restart=always
 RestartSec=10
 
@@ -130,8 +130,8 @@ source $CAMPTIONS_DIR/config.env
 sudo -u $RUN_USER /usr/bin/python3 $CAMPTIONS_DIR/capture_client.py \\
     --server "\$CAMPTIONS_SERVER" \\
     --venue "\$CAMPTIONS_VENUE" \\
-    \${CAMPTIONS_TOKEN:+--token "\$CAMPTIONS_TOKEN"} \\
-    \${CAMPTIONS_DEVICE:+--device "\$CAMPTIONS_DEVICE"}
+    --token "\$CAMPTIONS_TOKEN" \\
+    --device "\$CAMPTIONS_DEVICE"
 EOF
 chmod +x /usr/local/bin/camptions-test
 
