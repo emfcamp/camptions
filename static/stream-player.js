@@ -60,11 +60,10 @@ class WhepPlayer {
         pc.addTransceiver('video', { direction: 'recvonly' });
 
         const stream = new MediaStream();
+        this.videoEl.srcObject = stream;
         pc.ontrack = (event) => {
-            event.streams[0].getTracks().forEach(t => stream.addTrack(t));
-            if (this.videoEl.srcObject !== stream) {
-                this.videoEl.srcObject = stream;
-            }
+            stream.addTrack(event.track);
+            this.videoEl.play().catch(() => {});
         };
 
         pc.onconnectionstatechange = () => {

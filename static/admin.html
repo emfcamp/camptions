@@ -94,8 +94,12 @@
 
         .grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            grid-template-columns: repeat(2, 1fr);
             gap: 1.5rem;
+        }
+
+        @media (max-width: 700px) {
+            .grid { grid-template-columns: 1fr; }
         }
 
         .card {
@@ -172,6 +176,19 @@
         .venue-stream-url.unset {
             font-style: italic;
             font-family: inherit;
+        }
+
+        .venue-source {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.75rem;
+            color: var(--text-muted);
+        }
+
+        .venue-source-ip {
+            font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+            color: var(--success-color);
         }
 
         .btn-link {
@@ -533,6 +550,7 @@
                 const venues = await venuesRes.json();
                 const stats = await statsRes.json();
                 const activeVenues = new Set(stats.venues.active_list);
+                const clientIps = stats.client_ips || {};
 
                 document.getElementById('venueList').innerHTML = venues.map(v => {
                     const transcribing = v.transcription_enabled !== false;
@@ -565,6 +583,11 @@
                                 ${streamLabel}
                                 <button class="btn-link" data-venue="${escapeHtml(v.id)}" data-current="${escapeHtml(streamUrl)}" onclick="editStreamUrl(this)">Edit</button>
                             </div>
+                            ${clientIps[v.id] ? `
+                            <div class="venue-source">
+                                <span>Source IP:</span>
+                                <span class="venue-source-ip">${escapeHtml(clientIps[v.id])}</span>
+                            </div>` : ''}
                         </li>
                     `;
                 }).join('');

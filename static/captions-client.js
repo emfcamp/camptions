@@ -77,6 +77,8 @@ class CaptionsClient {
         this.reconnectAttempts = 0;
         this._reconnectTimer = null;
         this._destroyed = false;
+        this._tentativeTimer = null;
+        this._pendingTentativeText = null;
     }
 
     /** Load history, open the WebSocket, and register page-lifecycle hooks. */
@@ -237,16 +239,31 @@ class CaptionsClient {
             this._clearTentative();
             return;
         }
+        this._pendingTentativeText = text.trim();
+        if (this._tentativeTimer !== null) return;
+        this._flushTentative();
+        this._tentativeTimer = setTimeout(() => {
+            this._tentativeTimer = null;
+            if (this._pendingTentativeText !== null) this._flushTentative();
+        }, 500);
+    }
+
+    _flushTentative() {
+        const text = this._pendingTentativeText;
+        this._pendingTentativeText = null;
         if (!this.tentativeSpan) {
             this.tentativeSpan = document.createElement('span');
             this.tentativeSpan.className = 'caption-tentative';
             this.containerEl.appendChild(this.tentativeSpan);
         }
-        this.tentativeSpan.textContent = text.trim();
+        this.tentativeSpan.textContent = text;
         this.onNewBlock(this.tentativeSpan);
     }
 
     _clearTentative() {
+        clearTimeout(this._tentativeTimer);
+        this._tentativeTimer = null;
+        this._pendingTentativeText = null;
         if (this.tentativeSpan) {
             this.tentativeSpan.remove();
             this.tentativeSpan = null;

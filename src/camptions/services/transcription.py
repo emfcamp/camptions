@@ -250,7 +250,7 @@ class TranscriptionManager:
         for venue_id in list(self.venues):
             await self.end_session(venue_id)
 
-    async def start_session(self, venue_id: str, title: Optional[str] = None) -> str:
+    async def start_session(self, venue_id: str, title: Optional[str] = None, client_ip: Optional[str] = None) -> str:
         if venue_id in self.venues:
             await self.end_session(venue_id)
 
@@ -258,7 +258,7 @@ class TranscriptionManager:
         async with get_db_session() as db:
             db.add(Session(id=session_id, venue_id=venue_id, title=title))
 
-        venue = VenueSession(venue_id=venue_id, session_id=session_id)
+        venue = VenueSession(venue_id=venue_id, session_id=session_id, client_ip=client_ip)
         self.venues[venue_id] = venue
         venue.wl.on_state_change = lambda ready: self._on_wl_state_change(venue, ready)
         venue.streamer = AudioStreamer(venue, self.settings)

@@ -18,7 +18,7 @@ services:
       --cache_path /root/.cache/whisper-live/
     volumes:
       - whisper-cache:/root/.cache/whisper-live
-    restart: unless-stopped
+    restart: always
 
   camptions:
     build: .
@@ -34,9 +34,7 @@ services:
     volumes:
       - ./data:/app/data
       - ./static:/app/static
-    depends_on:
-      - wl
-    restart: unless-stopped
+    restart: always
 
   mediamtx:
     image: bluenviron/mediamtx:1.18.2
@@ -50,7 +48,7 @@ services:
       - MTX_WEBRTCADDITIONALHOSTS
     volumes:
       - ./mediamtx/mediamtx.yml:/mediamtx.yml:ro
-    restart: unless-stopped
+    restart: always
 
 volumes:
   whisper-cache:
