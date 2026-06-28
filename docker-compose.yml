@@ -13,8 +13,9 @@ services:
       python3 run_server.py
       --port 9090
       --raw_pcm_input
-      --max_clients 4
-      --max_connection_time 3600
+      --max_clients 16
+      --max_connection_time 86400
+      --cache_path /root/.cache/whisper-live/
     volumes:
       - whisper-cache:/root/.cache/whisper-live
     restart: unless-stopped
