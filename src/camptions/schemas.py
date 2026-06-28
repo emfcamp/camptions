@@ -151,7 +151,7 @@ class PublicSession(BaseModel):
 
 
 class PublicSessionsResponse(BaseModel):
-    count: int
+    count: int = Field(..., description="Number of sessions in this response.")
     sessions: list[PublicSession]
     next_cursor: Optional[str] = None
 

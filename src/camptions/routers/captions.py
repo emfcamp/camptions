@@ -51,7 +51,7 @@ text `"pong"` reply if you want a heartbeat, but the server emits its own
 
 | `type` | When | Payload |
 |--------|------|---------|
-| `connected` | First message after the WS opens. Always sent. | `{ session_id?, is_live, transcription_enabled }` |
+| `connected` | First message after the WS opens. Always sent. | `{ venue_id, session_id?, is_live, transcription_enabled, timestamp }` |
 | `venue_live` | Pi audio is streaming *and* the transcription backend is handshaked. | `{ session_id }` |
 | `venue_offline` | Pi audio is gone, or the transcription backend is unreachable. | — |
 | `session_end` | The current transcription session ended (Pi disconnect). | `{ session_id }` |

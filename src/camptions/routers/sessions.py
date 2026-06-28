@@ -65,7 +65,7 @@ async def list_sessions(
     ),
     active_only: bool = Query(False, description="Only sessions that haven't ended yet."),
     order: Literal["asc", "desc"] = Query("desc", description="Sort by `started_at`."),
-    limit: int = Query(50, ge=1, le=500),
+    limit: int = Query(50, ge=1, le=500, description="Maximum sessions to return."),
     cursor: Optional[str] = Query(None, description="Cursor from a previous `next_cursor`."),
     db: AsyncSession = Depends(get_db),
 ) -> PublicSessionsResponse:

@@ -2,6 +2,8 @@
 
 Live captioning system for EMF Camp using WhisperLive (Collabora).
 
+Mostly vibe coded, because I have opinionated ideas but not time, you're welcome to re-write everything from scratch.
+
 ## Overview
 
 EMF Camptions provides real-time speech-to-text captioning for live events. Audio is captured from stage microphones via Raspberry Pi devices, streamed to a central server running WhisperLive for transcription, and distributed to display screens and user devices.
