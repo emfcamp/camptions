@@ -932,6 +932,37 @@
             }, 50);
         }
 
+        // Keep the screen awake while captions are live, so a phone propped up
+        // to read doesn't sleep mid-talk. Held only while live (released when
+        // offline/paused/disconnected to save battery). The lock auto-releases
+        // when the tab is hidden, so re-acquire on visibility regain.
+        let wakeLock = null;
+        let wakeLockWanted = false;
+        async function acquireWakeLock() {
+            if (!('wakeLock' in navigator) || wakeLock) return;
+            try {
+                wakeLock = await navigator.wakeLock.request('screen');
+                wakeLock.addEventListener('release', () => { wakeLock = null; });
+            } catch {
+                // e.g. NotAllowedError when not visible / low battery — retry on
+                // the next status change or visibility regain.
+                wakeLock = null;
+            }
+        }
+        async function releaseWakeLock() {
+            const lock = wakeLock;
+            wakeLock = null;
+            if (lock) { try { await lock.release(); } catch { } }
+        }
+        function setWakeLock(wanted) {
+            wakeLockWanted = wanted;
+            if (wanted) acquireWakeLock();
+            else releaseWakeLock();
+        }
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible' && wakeLockWanted) acquireWakeLock();
+        });
+
         function switchVenue(venueId, { skipPushState = false } = {}) {
             if (venueId === currentVenue && client) return;
             currentVenue = venueId;
@@ -973,6 +1004,8 @@
                     statusDotEl.className = `status-dot ${cls}`;
                     statusTextEl.textContent = text;
                     updateEmptyState(cls);
+                    // Hold the screen awake only while captions are live.
+                    setWakeLock(cls === 'live');
                 },
                 onSessionStart() {
                     emptyStateEl.style.display = 'block';
