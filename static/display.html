@@ -51,8 +51,6 @@
             opacity: 0.1;
             pointer-events: none;
             z-index: 0;
-            will-change: transform;
-            transform: translateZ(0);
         }
 
         #qrCode {
@@ -173,7 +171,6 @@
         const params = new URLSearchParams(location.search);
         const pathMatch = location.pathname.match(/^\/display\/([^/]+)\/?$/);
         const venue = pathMatch ? decodeURIComponent(pathMatch[1]) : params.get('venue') || 'stage-a';
-        const mode = params.get('mode') || 'dark';
         const fontSize = params.get('fontSize');
 
         const qrUrl = `https://stages.emf.camp/v/${encodeURIComponent(venue)}`;
