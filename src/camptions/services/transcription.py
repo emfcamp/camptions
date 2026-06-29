@@ -200,7 +200,7 @@ class TranscriptionProcessor:
         if not last.get("completed"):
             text = (last.get("text") or "").strip()
             now = time.monotonic()
-            if text and text != venue.last_tentative and now - venue.last_tentative_sent_at >= 0.5:
+            if text and text != venue.last_tentative and now - venue.last_tentative_sent_at >= 1.0:
                 venue.last_tentative = text
                 venue.last_tentative_sent_at = now
                 await distribution_manager.broadcast(

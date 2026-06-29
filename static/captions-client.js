@@ -44,6 +44,8 @@ class CaptionsClient {
         containerEl,
         maxBlocks = 500,
         historyLimit = 200,
+        lineMode = false,
+        maxLines = 20,
         onStatus = () => {},
         onSessionStart = () => {},
         onSessionEnd = () => {},
@@ -56,6 +58,14 @@ class CaptionsClient {
         this.containerEl = containerEl;
         this.maxBlocks = maxBlocks;
         this.historyLimit = historyLimit;
+        // Line mode (display only): committed text is baked into fixed
+        // single-row .caption-line blocks at their natural wrap points, and
+        // whole lines are purged off the top past maxLines. Because each line
+        // is an independent block, purging never reflows the lines below — they
+        // keep their exact wrapping and just shift up. Default off so the
+        // viewer keeps its continuous inline flow.
+        this._lineMode = lineMode;
+        this.maxLines = maxLines;
         this.onStatus = onStatus;
         this.onSessionStart = onSessionStart;
         this.onSessionEnd = onSessionEnd;
@@ -73,6 +83,21 @@ class CaptionsClient {
         /** @type {boolean} true when admin has disabled transcription for this venue */
         this.paused = false;
 
+        /** @type {boolean} when true, tentative updates are buffered, not rendered */
+        this._tentativePaused = false;
+        /** @type {string|undefined} latest tentative text withheld while paused */
+        this._pendingTentative = undefined;
+
+        // Line-mode state.
+        /** @type {HTMLElement[]} frozen + in-progress .caption-line blocks, oldest first */
+        this.lines = [];
+        /** @type {HTMLElement|null} the line currently being filled */
+        this.currentLine = null;
+        /** @type {Set<string>} recently-seen committed keys, for dedup (bounded) */
+        this._seenCommitted = new Set();
+        /** @type {number} cached single-row height in px; 0 = needs measuring */
+        this._singleLineHeight = 0;
+
         this.ws = null;
         this.reconnectAttempts = 0;
         this._reconnectTimer = null;
@@ -87,6 +112,13 @@ class CaptionsClient {
             }
         };
         document.addEventListener('visibilitychange', this._visibilityHandler);
+        if (this._lineMode) {
+            // Font size is viewport-relative, so the single-row height changes
+            // when the window resizes — drop the cached value so the next
+            // wrap measurement re-reads it.
+            this._resizeHandler = () => { this._singleLineHeight = 0; };
+            window.addEventListener('resize', this._resizeHandler);
+        }
         await this._loadHistory();
         this._connect();
     }
@@ -95,6 +127,7 @@ class CaptionsClient {
     destroy() {
         this._destroyed = true;
         document.removeEventListener('visibilitychange', this._visibilityHandler);
+        if (this._resizeHandler) window.removeEventListener('resize', this._resizeHandler);
         clearTimeout(this._reconnectTimer);
         this._reconnectTimer = null;
         if (this.ws) {
@@ -108,6 +141,28 @@ class CaptionsClient {
     reconnect() {
         this.reconnectAttempts = 0;
         this._connect();
+    }
+
+    // ── Tentative render gating ──────────────────────────────────────────────
+    // Callers driving a scroll animation can pause tentative rendering for the
+    // duration of the glide. Tentative messages keep arriving but are buffered
+    // (latest wins) instead of written to the DOM, so the scrolling layer isn't
+    // repainted mid-motion. resumeTentative() flushes the latest buffered text.
+
+    /** Buffer tentative updates instead of rendering them. */
+    pauseTentative() {
+        this._tentativePaused = true;
+    }
+
+    /** Resume tentative rendering and flush the latest buffered update, if any. */
+    resumeTentative() {
+        if (!this._tentativePaused) return;
+        this._tentativePaused = false;
+        if (this._pendingTentative !== undefined) {
+            const text = this._pendingTentative;
+            this._pendingTentative = undefined;
+            this._onTentative(text);
+        }
     }
 
     // ── WebSocket lifecycle ──────────────────────────────────────────────────
@@ -226,7 +281,19 @@ class CaptionsClient {
 
     _onCommitted(sessionId, seq, text) {
         if (!text || !text.trim()) return;
+        // A committed segment supersedes any buffered tentative — drop it so we
+        // don't later flush stale in-progress text that overlaps this segment.
+        this._pendingTentative = undefined;
         this._clearTentative();
+        if (this._lineMode) {
+            const key = `${sessionId ?? '_'}:${seq}`;
+            if (this._seenCommitted.has(key)) return;
+            this._rememberCommitted(key);
+            this._appendCommittedText(text.trim());
+            this._trimLines();
+            this.onNewBlock(this.currentLine);
+            return;
+        }
         const span = this._ensureSegment(sessionId, seq);
         span.textContent = text.trim() + ' ';
         this._trimSegments();
@@ -234,6 +301,12 @@ class CaptionsClient {
     }
 
     _onTentative(text) {
+        // While a glide is animating, buffer the latest tentative instead of
+        // rendering it; resumeTentative() flushes it once the glide settles.
+        if (this._tentativePaused) {
+            this._pendingTentative = text;
+            return;
+        }
         if (!text || !text.trim()) {
             this._clearTentative();
             return;
@@ -241,10 +314,112 @@ class CaptionsClient {
         if (!this.tentativeSpan) {
             this.tentativeSpan = document.createElement('span');
             this.tentativeSpan.className = 'caption-tentative';
-            this.containerEl.appendChild(this.tentativeSpan);
+            // In line mode the tentative trails the committed text on the
+            // current line so the flow stays continuous; otherwise it sits at
+            // the end of the inline container.
+            const parent = this._lineMode ? this._ensureCurrentLine() : this.containerEl;
+            parent.appendChild(this.tentativeSpan);
         }
-        this.tentativeSpan.textContent = text.trim();
+        // In line mode committed words carry no trailing space, so insert one
+        // between the firm text and the tentative when they share a line.
+        const sep = (this._lineMode && this.tentativeSpan.previousSibling) ? ' ' : '';
+        this.tentativeSpan.textContent = sep + text.trim();
         this.onNewBlock(this.tentativeSpan);
+    }
+
+    // ── Line-mode rendering ──────────────────────────────────────────────────
+    // Committed words are appended to the current line; when a word tips the
+    // line onto a second visual row, it's moved to a fresh line so every
+    // committed line is exactly one row tall. Whole lines past maxLines are
+    // purged off the top — and because each line is its own block, that purge
+    // never reflows the surviving lines (they keep their wrapping and shift up).
+
+    _ensureCurrentLine() {
+        if (!this.currentLine) this._startNewLine();
+        return this.currentLine;
+    }
+
+    _startNewLine() {
+        const line = document.createElement('div');
+        line.className = 'caption-line';
+        this.containerEl.appendChild(line);
+        this.lines.push(line);
+        this.currentLine = line;
+        return line;
+    }
+
+    _appendCommittedText(text) {
+        this._ensureCurrentLine();
+        for (const word of text.split(/\s+/)) {
+            if (word) this._appendWord(word);
+        }
+    }
+
+    _appendWord(word) {
+        const line = this._ensureCurrentLine();
+        const lineWasEmpty = line.firstChild === null;
+        const node = document.createTextNode(lineWasEmpty ? word : ' ' + word);
+        line.appendChild(node);
+        // If the word pushed the line onto a second row, move it to a new line.
+        // A lone word wider than the row can't be split, so leave it in place.
+        if (!lineWasEmpty && this._isWrapped(line)) {
+            line.removeChild(node);
+            this._startNewLine();
+            this.currentLine.appendChild(document.createTextNode(word));
+        }
+    }
+
+    _isWrapped(line) {
+        const single = this._singleRowHeight();
+        return single > 0 && line.offsetHeight > single * 1.5;
+    }
+
+    _singleRowHeight() {
+        if (!this._singleLineHeight) {
+            this._singleLineHeight = parseFloat(getComputedStyle(this.containerEl).lineHeight) || 0;
+        }
+        return this._singleLineHeight;
+    }
+
+    _rememberCommitted(key) {
+        this._seenCommitted.add(key);
+        // Bound the dedup set; it only needs to cover the history/live overlap
+        // window, not the whole session. Evict oldest (insertion order).
+        if (this._seenCommitted.size > 200) {
+            this._seenCommitted.delete(this._seenCommitted.values().next().value);
+        }
+    }
+
+    _trimLines() {
+        if (this.lines.length <= this.maxLines) return;
+        const heightBefore = this.containerEl.offsetHeight;
+        while (this.lines.length > this.maxLines) {
+            this.lines.shift().remove();
+        }
+        const delta = heightBefore - this.containerEl.offsetHeight;
+        if (delta > 0) this.onTrim(delta);
+    }
+
+    /**
+     * Re-bake every committed line at the current font/width metrics. Wrap
+     * points are frozen at bake time, so they go stale when the font size or
+     * the viewport width changes — call this to recompute them. The tentative
+     * is preserved. Scroll position is the caller's responsibility (line
+     * breaks move, so only the caller knows how to re-anchor the view).
+     */
+    reflowLines() {
+        if (!this._lineMode) return;
+        const tentative = this.tentativeSpan ? this.tentativeSpan.textContent.trim() : null;
+        this._clearTentative();
+        // Reconstruct the committed text from the lines (joined with spaces —
+        // the breaks only ever fall between words) and rebuild from scratch.
+        const text = this.lines.map(l => l.textContent).join(' ').replace(/\s+/g, ' ').trim();
+        for (const line of this.lines) line.remove();
+        this.lines = [];
+        this.currentLine = null;
+        this._singleLineHeight = 0; // metrics changed — force a re-measure
+        if (text) this._appendCommittedText(text);
+        if (tentative) this._onTentative(tentative);
     }
 
     _clearTentative() {
@@ -289,6 +464,12 @@ class CaptionsClient {
         this._clearTentative();
         for (const span of this.segmentMap.values()) span.remove();
         this.segmentMap.clear();
+        if (this._lineMode) {
+            for (const line of this.lines) line.remove();
+            this.lines = [];
+            this.currentLine = null;
+            this._seenCommitted.clear();
+        }
     }
 
     // ── History ──────────────────────────────────────────────────────────────
@@ -300,6 +481,13 @@ class CaptionsClient {
             const res = await fetch(url);
             if (!res.ok) return;
             const { segments = [] } = await res.json();
+            // Line mode freezes wrap points at bake time, so we must bake with
+            // the real font metrics. Baking before the web font swaps in would
+            // freeze breaks at the fallback font's wrap points — off by ~a word
+            // once the real font loads. Wait for fonts before baking history.
+            if (this._lineMode && document.fonts?.ready) {
+                await document.fonts.ready;
+            }
             for (const s of segments.filter(s => s.text && s.text.trim())) {
                 const seq = s.sequence ?? -(this.segmentMap.size + 1);
                 this._onCommitted(s.session_id ?? null, seq, s.text);

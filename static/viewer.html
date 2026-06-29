@@ -222,6 +222,14 @@
             line-height: 1.5;
         }
 
+        /* Each committed line is frozen at its natural wrap point and is its
+           own block, so purging whole lines off the top never reflows the
+           lines below — they keep their wrapping and just shift up. Breaks are
+           re-baked (reflowLines) when the font size or viewport width changes. */
+        .caption-line {
+            display: block;
+        }
+
         /* Committed segments and the trailing tentative both flow inline. */
         .caption-segment {
             /* Inline by default — no further styling. */
@@ -688,7 +696,16 @@
         const SCROLL_BOTTOM_THRESHOLD = 80;  // px from bottom still considered "at bottom"
         let userScrolledUp = false;
         let isAutoScrolling = false;
-        let fontSize = parseFloat(localStorage.getItem('fontSize')) || 1;
+
+        // Pick a starting caption size that suits the screen — a big screen
+        // shouldn't be stuck with phone-sized text. Scales with viewport width,
+        // clamped to a sensible range and rounded to the 0.25rem the A-/A+
+        // buttons step in. Only used when the user has no saved preference.
+        function defaultFontSize() {
+            const raw = Math.max(1, Math.min(2.5, window.innerWidth / 600));
+            return Math.round(raw * 4) / 4;
+        }
+        let fontSize = parseFloat(localStorage.getItem('fontSize')) || defaultFontSize();
         let isDarkMode = localStorage.getItem('theme') !== 'light';
         let viewerMode = null;
         let streamWanted = false;
@@ -944,6 +961,14 @@
             client = new CaptionsClient({
                 venue: currentVenue,
                 containerEl: captionsEl,
+                // Bake captions into fixed line blocks so purging old text off
+                // the top never reflows (and jitters) the visible lines.
+                lineMode: true,
+                // Keep a bounded buffer for scroll-back without unbounded DOM.
+                maxLines: 80,
+                // Load only a little history on open — enough for context, not
+                // a wall of backlog to scroll through.
+                historyLimit: 30,
                 onStatus(cls, text) {
                     statusDotEl.className = `status-dot ${cls}`;
                     statusTextEl.textContent = text;
@@ -1018,15 +1043,39 @@
             jumpBtn.classList.add('hidden');
         });
 
-        document.getElementById('fontIncrease').addEventListener('click', () => {
-            fontSize = Math.min(20, fontSize + 0.5);
+        // Frozen line breaks go stale when the font size or viewport width
+        // changes, so re-bake them. Debounced (rapid A-/A+ taps, resize
+        // streams) and scroll-aware: if the user was pinned to the bottom we
+        // re-pin after the breaks move; otherwise we leave their position.
+        let _reflowTimer = null;
+        function scheduleReflow() {
+            clearTimeout(_reflowTimer);
+            _reflowTimer = setTimeout(() => {
+                if (!client) return;
+                const wasAtBottom = !userScrolledUp;
+                client.reflowLines();
+                if (wasAtBottom) smoothScrollToBottom(0);
+            }, 150);
+        }
+
+        function changeFontSize(delta) {
+            fontSize = Math.min(20, Math.max(0.75, fontSize + delta));
             localStorage.setItem('fontSize', fontSize);
-            applyTheme();
-        });
-        document.getElementById('fontDecrease').addEventListener('click', () => {
-            fontSize = Math.max(0.75, fontSize - 0.5);
-            localStorage.setItem('fontSize', fontSize);
-            applyTheme();
+            applyTheme();      // apply the new size immediately
+            scheduleReflow();  // then re-bake the wrap points for it
+        }
+
+        document.getElementById('fontIncrease').addEventListener('click', () => changeFontSize(0.5));
+        document.getElementById('fontDecrease').addEventListener('click', () => changeFontSize(-0.5));
+
+        // Re-bake on width changes only (orientation, window resize). Ignore
+        // height-only changes — e.g. the mobile address bar showing/hiding —
+        // since those don't affect where lines wrap.
+        let _lastReflowWidth = window.innerWidth;
+        window.addEventListener('resize', () => {
+            if (window.innerWidth === _lastReflowWidth) return;
+            _lastReflowWidth = window.innerWidth;
+            scheduleReflow();
         });
         document.getElementById('themeToggle').addEventListener('click', () => {
             isDarkMode = !isDarkMode;

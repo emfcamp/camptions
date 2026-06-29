@@ -109,7 +109,11 @@
             50%       { opacity: 0.5; }
         }
 
-        /* Caption area — fixed viewport, clips overflow at top */
+        /* Caption area — fixed viewport, clips overflow at top.
+           The perspective tapers the text inward at the top (Star Wars
+           crawl); the fade to black is done by #topFade, NOT a mask — a
+           CSS mask over scrolling content forces a per-frame re-raster
+           that makes the scroll stutter on a Raspberry Pi. */
         #captions {
             position: fixed;
             inset: 0;
@@ -117,6 +121,38 @@
             margin: 4rem var(--padding) 6rem;
             z-index: 1;
             contain: layout size;
+            perspective: 60vw;
+            perspective-origin: center bottom;
+        }
+
+        /* Static gradient overlay — the captions scroll underneath it, so the
+           GPU only blends two layers rather than re-masking moving content.
+           Cheap on a Pi. Works because the page background is solid black. */
+        #topFade {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 42vh;
+            z-index: 2;
+            pointer-events: none;
+            background: linear-gradient(to bottom,
+                #000 0%,
+                rgba(0, 0, 0, 0.85) 28%,
+                transparent 100%);
+        }
+
+        /*
+         * Tilt stage — rotates the whole caption plane back at the top so it
+         * tapers toward the middle (the perspective on #captions does the
+         * foreshortening). Kept separate from #captionsInner because JS owns
+         * that element's transform for the scroll animation.
+         */
+        #captionsStage {
+            position: absolute;
+            inset: 0;
+            transform: rotateX(18deg);
+            transform-origin: center bottom;
         }
 
         /*
@@ -131,9 +167,18 @@
             right: 0;
             line-height: var(--line-height);
             pointer-events: none;
-            transition: transform 1.5s ease-out;
+            /* Tentative rendering is paused for the duration of this glide
+               (see beginGlide / GLIDE_MS), so the layer is never repainted
+               mid-motion. Keep GLIDE_MS in sync with this duration. */
+            transition: transform 1s ease-out;
             transform: translateY(0);
             will-change: transform;
+        }
+
+        /* Each frozen caption line is its own block (one visual row), so
+           purging whole lines off the top never reflows the lines below. */
+        .caption-line {
+            display: block;
         }
 
         /* Committed segments and the trailing tentative both flow inline. */
@@ -145,16 +190,6 @@
             opacity: var(--tentative-opacity);
         }
 
-        .caption-tentative::after {
-            content: ' \25ae';
-            animation: blink 1s step-end infinite;
-        }
-
-        @keyframes blink {
-            0%, 100% { opacity: 1; }
-            50%       { opacity: 0; }
-        }
-
 </style>
 </head>
 
@@ -162,8 +197,11 @@
     <div id="status" class="disconnected">Connecting...</div>
     <div id="pausedBanner" hidden>Transcription paused</div>
     <div id="captions" role="region" aria-live="polite" aria-label="Live captions">
-        <div id="captionsInner"></div>
+        <div id="captionsStage">
+            <div id="captionsInner"></div>
+        </div>
     </div>
+    <div id="topFade" aria-hidden="true"></div>
     <div id="qrCode" aria-hidden="true"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
@@ -200,6 +238,24 @@
         // history pre-fill snaps to the bottom rather than animating from top.
         let _needsInitialSnap = true;
         let _positionDebounceTimer = null;
+        // Last applied translateY (target trajectory, not the mid-animation
+        // value). The scroll is clamped to never exceed this, so the display
+        // only ever scrolls upward — brief content-height shrinks don't bounce
+        // it back down.
+        let _lastTranslateY = 0;
+
+        // While a glide animates we pause tentative DOM updates so the
+        // scrolling layer isn't repainted mid-motion — the Pi GPU can't
+        // smoothly slide a layer while re-rasterizing it. Tentative text keeps
+        // arriving (buffered, latest wins) and is flushed when the glide
+        // settles. GLIDE_MS must match the CSS transition on #captionsInner.
+        const GLIDE_MS = 1000;
+        let _glideResumeTimer = null;
+        function beginGlide() {
+            client.pauseTentative();
+            clearTimeout(_glideResumeTimer);
+            _glideResumeTimer = setTimeout(() => client.resumeTentative(), GLIDE_MS);
+        }
 
         function getLineHeight() {
             if (!lineHeightPx) lineHeightPx = parseFloat(getComputedStyle(document.body).lineHeight);
@@ -208,17 +264,23 @@
         function applyTransform(contentHeight) {
             if (contentHeight <= viewportHeight) {
                 captionsInner.style.transform = 'translateY(0)';
+                _lastTranslateY = 0;
                 return;
             }
-            const target = viewportHeight - contentHeight - 2 * getLineHeight();
+            let target = viewportHeight - contentHeight - 2 * getLineHeight();
             if (_needsInitialSnap) {
                 _needsInitialSnap = false;
                 captionsInner.style.transition = 'none';
                 captionsInner.style.transform = `translateY(${target}px)`;
                 requestAnimationFrame(() => { captionsInner.style.transition = ''; });
             } else {
+                // Upward-only: never let the transform move down (more
+                // positive) than where it already is.
+                target = Math.min(target, _lastTranslateY);
                 captionsInner.style.transform = `translateY(${target}px)`;
+                beginGlide();
             }
+            _lastTranslateY = target;
         }
         window.addEventListener('resize', () => { viewportHeight = captionsViewport.clientHeight; });
 
@@ -248,13 +310,18 @@
             // beyond a handful of lines just scrolls off the top anyway.
             // Keep memory low for long-running display sessions.
             historyLimit: 20,
-            maxBlocks: 30,
+            // Line mode: bake committed text into fixed single-row blocks and
+            // purge whole lines off the top, so purging never reflows (and
+            // jitters) the lines still on screen.
+            lineMode: true,
+            maxLines: 20,
             onStatus(cls, text) {
                 statusEl.className = cls;
                 statusEl.textContent = text;
             },
             onSessionStart() {
                 captionsInner.style.transform = 'translateY(0)';
+                _lastTranslateY = 0;
             },
             onSessionEnd() {},
             onNewBlock() {},  // ResizeObserver handles position updates
@@ -270,6 +337,11 @@
                 captionsInner.style.transform = `translateY(${target}px)`;
                 void captionsInner.offsetHeight; // flush before restoring transition
                 captionsInner.style.transition = '';
+                // Front segments were evicted, so content shrank by `delta`;
+                // the recomputed target will legitimately move down by the same
+                // amount to keep the bottom static. Raise the clamp baseline so
+                // the upward-only clamp doesn't block that compensation.
+                _lastTranslateY += delta;
             },
         });
 
