@@ -51,6 +51,8 @@
             opacity: 0.1;
             pointer-events: none;
             z-index: 0;
+            will-change: transform;
+            transform: translateZ(0);
         }
 
         #qrCode {
@@ -132,6 +134,7 @@
             pointer-events: none;
             transition: transform 3s ease-out;
             transform: translateY(0);
+            will-change: transform;
         }
 
         /* Committed segments and the trailing tentative both flow inline. */
@@ -145,7 +148,7 @@
 
         .caption-tentative::after {
             content: ' \25ae';
-            animation: blink 1s infinite;
+            animation: blink 1s step-end infinite;
         }
 
         @keyframes blink {
@@ -192,13 +195,19 @@
 
         // Slowly scroll content up as it grows, anchored to the bottom of the
         // viewport. The CSS 3s ease-out transition on captionsInner makes it smooth.
+        let _positionRafPending = false;
         function updateDisplayPosition() {
-            const available = captionsViewport.clientHeight;
-            const contentHeight = captionsInner.scrollHeight;
-            if (contentHeight > available) {
-                const lineHeight = parseFloat(getComputedStyle(document.body).lineHeight);
-                captionsInner.style.transform = `translateY(${available - contentHeight - 2 * lineHeight}px)`;
-            }
+            if (_positionRafPending) return;
+            _positionRafPending = true;
+            requestAnimationFrame(() => {
+                _positionRafPending = false;
+                const available = captionsViewport.clientHeight;
+                const contentHeight = captionsInner.scrollHeight;
+                if (contentHeight > available) {
+                    const lineHeight = parseFloat(getComputedStyle(document.body).lineHeight);
+                    captionsInner.style.transform = `translateY(${available - contentHeight - 2 * lineHeight}px)`;
+                }
+            });
         }
 
         // Reads the currently-rendered translateY (i.e. the value the CSS
