@@ -154,12 +154,11 @@ async def update_venue(
     await db.refresh(venue)
 
     if transcription_state_changed:
-        # When disabling, also tear down any active session so audio stops
-        # being transcribed immediately. The Pi may still be streaming —
-        # the audio router treats a missing session as "discard".
-        if not transcription_enabled and _transcription_manager is not None:
-            if _transcription_manager.has_active_session(venue_id):
-                await _transcription_manager.end_session(venue_id)
+        # Pause/unpause the active session in place rather than tearing it down.
+        # The Pi and viewers stay connected; while paused the audio router's
+        # process_audio drops incoming audio and no captions are produced.
+        if _transcription_manager is not None:
+            _transcription_manager.set_paused(venue_id, not transcription_enabled)
         await distribution_manager.broadcast(
             venue_id,
             {

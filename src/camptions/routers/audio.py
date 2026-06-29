@@ -58,20 +58,21 @@ async def audio_ingest(
 
     transcription_manager = get_transcription_manager()
 
-    # Honor the per-venue transcription toggle. When disabled at connect, we
-    # still accept the WS so the Pi doesn't churn through reconnects; we
-    # just drain bytes and skip session creation. The viewer/display see
-    # `transcription_disabled` and render a "paused" banner.
+    # Honor the per-venue transcription toggle. We always create a session so
+    # the venue can be paused/unpaused mid-stream without disconnecting the Pi
+    # or viewers — when paused, the session stays up but process_audio drops
+    # incoming audio and no captions are produced (see set_paused).
     transcription_enabled = await _venue_transcription_enabled(venue_id)
+    paused = not transcription_enabled
 
-    session_id: str | None = None
-    if transcription_enabled:
-        session_id = await transcription_manager.start_session(venue_id, session_title)
-        # venue_live is broadcast by TranscriptionManager once WL actually
-        # connects and handshakes — viewers only show "Live" when captions
-        # can be produced.
-    else:
-        log.info("[%s] transcription disabled for venue; draining audio", venue_id)
+    session_id = await transcription_manager.start_session(
+        venue_id, session_title, paused=paused
+    )
+    # venue_live is broadcast by TranscriptionManager once WL actually
+    # connects and handshakes — viewers only show "Live" when captions can be
+    # produced, and the client suppresses it while paused.
+    if paused:
+        log.info("[%s] transcription paused for venue; dropping audio", venue_id)
         await distribution_manager.broadcast(
             venue_id,
             {
@@ -88,15 +89,15 @@ async def audio_ingest(
 
     try:
         # Always reply with `session_started` — the Pi client expects this
-        # type as its connection handshake. When paused, session_id is null
-        # and process_audio is skipped below; the `transcription_disabled`
-        # signal goes to viewers via distribution_manager, not the Pi.
+        # type as its connection handshake. `transcription_enabled` reflects the
+        # venue's current pause state; the Pi streams regardless, and the
+        # backend drops the audio while paused.
         await websocket.send_json(
             {
                 "type": "session_started",
                 "session_id": session_id,
                 "venue_id": venue_id,
-                "transcription_enabled": session_id is not None,
+                "transcription_enabled": transcription_enabled,
             }
         )
 
@@ -110,10 +111,9 @@ async def audio_ingest(
                     "[%s] first audio chunk: %d bytes, %.0f ms after accept",
                     venue_id, len(audio_data), (t_first_chunk - t_open) * 1000,
                 )
-            if session_id is not None:
-                # process_audio is a no-op when the session has been ended
-                # (e.g. admin disabled transcription mid-stream).
-                await transcription_manager.process_audio(venue_id, audio_data)
+            # process_audio drops the chunk while the venue is paused; otherwise
+            # it queues it for WhisperLive.
+            await transcription_manager.process_audio(venue_id, audio_data)
 
     except WebSocketDisconnect as e:
         elapsed_ms = (time.monotonic() - t_open) * 1000
@@ -125,8 +125,7 @@ async def audio_ingest(
     except Exception:
         log.exception("[%s] Pi ingest error", venue_id)
     finally:
-        if session_id is not None:
-            await transcription_manager.end_session(venue_id)
+        await transcription_manager.end_session(venue_id)
         await distribution_manager.broadcast(
             venue_id,
             {

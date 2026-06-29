@@ -51,6 +51,9 @@ class TranscriptionProcessor:
     def __init__(self, venue: VenueSession, settings: Settings) -> None:
         self.venue = venue
         self.settings = settings
+        # Trailing-edge flush for tentative captions throttled by the 1 s
+        # rate limit, so the latest in-progress text is never dropped.
+        self._tentative_flush: Optional[asyncio.Task] = None
 
     async def start(self) -> None:
         self.venue.recv_task = asyncio.create_task(
@@ -58,6 +61,7 @@ class TranscriptionProcessor:
         )
 
     async def stop(self) -> None:
+        self._cancel_tentative_flush()
         await await_or_cancel(self.venue.recv_task, "receiver", self.venue.venue_id)
 
     async def _handshake(self, ws: Any) -> None:
@@ -155,6 +159,7 @@ class TranscriptionProcessor:
         # `committed_starts` is preserved across WL reconnects within a Pi
         # session so the ring-buffer audio replay doesn't re-emit finalised
         # segments. Only the in-progress tentative is reset.
+        self._cancel_tentative_flush()
         self.venue.last_tentative = ""
         self.venue.last_tentative_sent_at = 0.0
 
@@ -167,6 +172,10 @@ class TranscriptionProcessor:
         WL reconnects so audio-ring replays don't double-emit.
         """
         venue = self.venue
+        if venue.paused:
+            # Paused mid-stream: suppress any captions WL still emits (e.g. from
+            # the replay ring after a reconnect) so a paused venue is silent.
+            return
         segments = data.get("segments") or []
         if not segments:
             return
@@ -197,23 +206,61 @@ class TranscriptionProcessor:
             await self._store(segment)
 
         last = segments[-1]
-        if not last.get("completed"):
-            text = (last.get("text") or "").strip()
-            now = time.monotonic()
-            if text and text != venue.last_tentative and now - venue.last_tentative_sent_at >= 1.0:
-                venue.last_tentative = text
-                venue.last_tentative_sent_at = now
-                await distribution_manager.broadcast(
-                    venue.venue_id,
-                    {
-                        "id": str(uuid.uuid4()),
-                        "session_id": venue.session_id,
-                        "venue_id": venue.venue_id,
-                        "type": "tentative",
-                        "text": text,
-                        "timestamp": datetime.now(UTC).isoformat(),
-                    },
-                )
+        if last.get("completed"):
+            # No in-progress text in this message: the tentative was finalised
+            # as a committed segment, so drop any pending trailing flush rather
+            # than re-emit text the client has already cleared.
+            self._cancel_tentative_flush()
+            return
+
+        text = (last.get("text") or "").strip()
+        if not text or text == venue.last_tentative:
+            return
+
+        elapsed = time.monotonic() - venue.last_tentative_sent_at
+        if elapsed >= 1.0:
+            # A fresh update supersedes any text waiting on a trailing flush.
+            self._cancel_tentative_flush()
+            await self._emit_tentative(text)
+        else:
+            # Throttled: schedule the latest text to be flushed once the 1 s
+            # window elapses so the final update is never silently dropped.
+            self._schedule_tentative_flush(text, 1.0 - elapsed)
+
+    async def _emit_tentative(self, text: str) -> None:
+        venue = self.venue
+        venue.last_tentative = text
+        venue.last_tentative_sent_at = time.monotonic()
+        await distribution_manager.broadcast(
+            venue.venue_id,
+            {
+                "id": str(uuid.uuid4()),
+                "session_id": venue.session_id,
+                "venue_id": venue.venue_id,
+                "type": "tentative",
+                "text": text,
+                "timestamp": datetime.now(UTC).isoformat(),
+            },
+        )
+
+    def _cancel_tentative_flush(self) -> None:
+        task = self._tentative_flush
+        self._tentative_flush = None
+        if task is not None and not task.done():
+            task.cancel()
+
+    def _schedule_tentative_flush(self, text: str, delay: float) -> None:
+        self._cancel_tentative_flush()
+        self._tentative_flush = asyncio.create_task(
+            self._flush_tentative_after(text, delay),
+            name=f"tentative-flush:{self.venue.venue_id}",
+        )
+
+    async def _flush_tentative_after(self, text: str, delay: float) -> None:
+        with contextlib.suppress(asyncio.CancelledError):
+            await asyncio.sleep(delay)
+            if text != self.venue.last_tentative:
+                await self._emit_tentative(text)
 
     async def _store(self, seg: dict) -> None:
         async with get_db_session() as db:
@@ -253,7 +300,9 @@ class TranscriptionManager:
         for venue_id in list(self.venues):
             await self.end_session(venue_id)
 
-    async def start_session(self, venue_id: str, title: Optional[str] = None) -> str:
+    async def start_session(
+        self, venue_id: str, title: Optional[str] = None, paused: bool = False
+    ) -> str:
         if venue_id in self.venues:
             await self.end_session(venue_id)
 
@@ -261,7 +310,7 @@ class TranscriptionManager:
         async with get_db_session() as db:
             db.add(Session(id=session_id, venue_id=venue_id, title=title))
 
-        venue = VenueSession(venue_id=venue_id, session_id=session_id)
+        venue = VenueSession(venue_id=venue_id, session_id=session_id, paused=paused)
         self.venues[venue_id] = venue
         venue.wl.on_state_change = lambda ready: self._on_wl_state_change(venue, ready)
         venue.streamer = AudioStreamer(venue, self.settings)
@@ -350,11 +399,30 @@ class TranscriptionManager:
             # admin toggles transcription off mid-stream, or if the Pi sends
             # a chunk after end_session(). Not an error.
             return
+        if venue.paused:
+            # Admin paused this venue: drop the audio without feeding WL. The
+            # session and connections stay up so unpausing resumes instantly.
+            return
         try:
             venue.audio_queue.put_nowait(audio)
         except asyncio.QueueFull:
             venue.audio_drops += 1
             log.warning("[%s] audio queue full, dropping %d bytes", venue_id, len(audio))
+
+    def set_paused(self, venue_id: str, paused: bool) -> bool:
+        """Pause/unpause transcription for an active session without tearing it
+        down. Returns True if a session existed to toggle.
+
+        While paused, incoming Pi audio is dropped and no captions are emitted,
+        but the session, WL connection, and all client connections stay alive —
+        so toggling never disconnects the Pi or viewers, and unpausing resumes
+        immediately with no reconnect.
+        """
+        venue = self.venues.get(venue_id)
+        if venue is None:
+            return False
+        venue.paused = paused
+        return True
 
     def has_active_session(self, venue_id: str) -> bool:
         return venue_id in self.venues

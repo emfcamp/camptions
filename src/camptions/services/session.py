@@ -168,6 +168,12 @@ class VenueSession:
     # effective live state.
     wl_ready: bool = False
 
+    # True while an admin has paused transcription for this venue. The session,
+    # WL connection, and all client connections stay alive — incoming Pi audio
+    # is simply dropped and no captions are produced. Toggling this does not
+    # disconnect anyone; unpausing resumes transcription with no reconnect.
+    paused: bool = False
+
     # time.monotonic() value when the current WL ws opened — used by the
     # send loop to decide when to proactively reconnect (WL has a
     # --max_connection_time cap, default 1 h).
