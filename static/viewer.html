@@ -956,15 +956,29 @@
         // when the tab is hidden, so re-acquire on visibility regain.
         let wakeLock = null;
         let wakeLockWanted = false;
+        let wakeLockPending = null;  // in-flight request, so concurrent calls don't double-acquire
         async function acquireWakeLock() {
-            if (!('wakeLock' in navigator) || wakeLock) return;
+            // The API is only exposed in a secure context (HTTPS or localhost);
+            // plain http:// over a LAN IP has no navigator.wakeLock. Bail
+            // quietly — this is an expected limitation, not an error worth
+            // logging on every status change.
+            if (!('wakeLock' in navigator)) return;
+            if (wakeLock || wakeLockPending) return;
             try {
-                wakeLock = await navigator.wakeLock.request('screen');
+                wakeLockPending = navigator.wakeLock.request('screen');
+                wakeLock = await wakeLockPending;
                 wakeLock.addEventListener('release', () => { wakeLock = null; });
-            } catch {
+                // 'wanted' may have flipped off while we awaited (e.g. status
+                // went live→offline) — honour the latest intent rather than
+                // holding a lock nobody wants.
+                if (!wakeLockWanted) releaseWakeLock();
+            } catch (err) {
                 // e.g. NotAllowedError when not visible / low battery — retry on
                 // the next status change or visibility regain.
+                console.warn('Wake Lock request failed:', err.name, err.message);
                 wakeLock = null;
+            } finally {
+                wakeLockPending = null;
             }
         }
         async function releaseWakeLock() {
