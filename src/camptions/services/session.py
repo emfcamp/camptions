@@ -185,9 +185,6 @@ class VenueSession:
     # Last tentative text broadcast.
     last_tentative: str = ""
 
-    # IP address of the connected Pi (in-memory only, cleared on disconnect).
-    client_ip: Optional[str] = None
-
     # Task handles set by AudioStreamer / TranscriptionProcessor.
     send_task: Optional[asyncio.Task] = None
     recv_task: Optional[asyncio.Task] = None

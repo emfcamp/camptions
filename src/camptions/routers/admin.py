@@ -95,19 +95,12 @@ async def get_stats(db: AsyncSession = Depends(get_db)) -> dict:
     }
     total_drops = sum(audio_drops.values()) + sum(dist_drops.values())
 
-    client_ips = {
-        venue_id: v.client_ip
-        for venue_id, v in transcription_manager.venues.items()
-        if v.client_ip
-    }
-
     return {
         "venues": {
             "total": venue_count,
             "active": len(active_venues),
             "active_list": active_venues,
         },
-        "client_ips": client_ips,
         "sessions": {
             "total": session_count,
         },

@@ -64,11 +64,9 @@ async def audio_ingest(
     # `transcription_disabled` and render a "paused" banner.
     transcription_enabled = await _venue_transcription_enabled(venue_id)
 
-    client_ip = websocket.client.host if websocket.client else None
-
     session_id: str | None = None
     if transcription_enabled:
-        session_id = await transcription_manager.start_session(venue_id, session_title, client_ip=client_ip)
+        session_id = await transcription_manager.start_session(venue_id, session_title)
         # venue_live is broadcast by TranscriptionManager once WL actually
         # connects and handshakes — viewers only show "Live" when captions
         # can be produced.
