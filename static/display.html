@@ -116,12 +116,13 @@
             overflow: hidden;
             margin: 4rem var(--padding) 6rem;
             z-index: 1;
+            contain: layout size;
         }
 
         /*
          * Grid anchored to the top of the container. JS applies a negative
-         * translateY to keep the bottom line visible. The 3s ease-out
-         * transition gives the slow, smooth upward scroll effect.
+         * translateY to keep the bottom line visible. The 1.5s ease-out
+         * transition gives a smooth upward scroll effect.
          */
         #captionsInner {
             position: absolute;
@@ -130,7 +131,7 @@
             right: 0;
             line-height: var(--line-height);
             pointer-events: none;
-            transition: transform 3s ease-out;
+            transition: transform 1.5s ease-out;
             transform: translateY(0);
             will-change: transform;
         }
@@ -190,26 +191,50 @@
         const captionsInner = document.getElementById('captionsInner');
         const pausedBannerEl = document.getElementById('pausedBanner');
 
-        // Slowly scroll content up as it grows, anchored to the bottom of the
-        // viewport. The CSS 3s ease-out transition on captionsInner makes it smooth.
-        let _positionRafPending = false;
-        function updateDisplayPosition() {
-            if (_positionRafPending) return;
-            _positionRafPending = true;
-            requestAnimationFrame(() => {
-                _positionRafPending = false;
-                const available = captionsViewport.clientHeight;
-                const contentHeight = captionsInner.scrollHeight;
-                if (contentHeight > available) {
-                    const lineHeight = parseFloat(getComputedStyle(document.body).lineHeight);
-                    captionsInner.style.transform = `translateY(${available - contentHeight - 2 * lineHeight}px)`;
-                }
-            });
-        }
+        // ResizeObserver fires only when captionsInner's dimensions change (i.e.
+        // text wraps to a new line), not on every text content update. This avoids
+        // forced synchronous layout reads that cause stutter on low-power hardware.
+        let viewportHeight = captionsViewport.clientHeight;
+        let lineHeightPx = 0;
+        // True until the first non-trivial position update, so the initial
+        // history pre-fill snaps to the bottom rather than animating from top.
+        let _needsInitialSnap = true;
+        let _positionDebounceTimer = null;
 
-        // Reads the currently-rendered translateY (i.e. the value the CSS
-        // transition is animating through right now, not the target). We
-        // need this to snap accurately when trim fires mid-animation.
+        function getLineHeight() {
+            if (!lineHeightPx) lineHeightPx = parseFloat(getComputedStyle(document.body).lineHeight);
+            return lineHeightPx;
+        }
+        function applyTransform(contentHeight) {
+            if (contentHeight <= viewportHeight) {
+                captionsInner.style.transform = 'translateY(0)';
+                return;
+            }
+            const target = viewportHeight - contentHeight - 2 * getLineHeight();
+            if (_needsInitialSnap) {
+                _needsInitialSnap = false;
+                captionsInner.style.transition = 'none';
+                captionsInner.style.transform = `translateY(${target}px)`;
+                requestAnimationFrame(() => { captionsInner.style.transition = ''; });
+            } else {
+                captionsInner.style.transform = `translateY(${target}px)`;
+            }
+        }
+        window.addEventListener('resize', () => { viewportHeight = captionsViewport.clientHeight; });
+
+        const positionObserver = new ResizeObserver(entries => {
+            const entry = entries[entries.length - 1];
+            const h = entry.borderBoxSize?.[0]?.blockSize ?? entry.contentRect.height;
+            // Debounce: collapse rapid successive changes (e.g. bulk history
+            // load) into one position update so transitions don't restart
+            // repeatedly and cause visual jumping.
+            clearTimeout(_positionDebounceTimer);
+            _positionDebounceTimer = setTimeout(() => applyTransform(h), 50);
+        });
+        positionObserver.observe(captionsInner);
+
+        // Read the currently-animated translateY (not the target) so onTrim
+        // can snap the position mid-animation without a visible jump.
         function getCurrentTranslateY() {
             const t = getComputedStyle(captionsInner).transform;
             if (!t || t === 'none') return 0;
@@ -232,24 +257,18 @@
                 captionsInner.style.transform = 'translateY(0)';
             },
             onSessionEnd() {},
-            onNewBlock() { updateDisplayPosition(); },
+            onNewBlock() {},  // ResizeObserver handles position updates
             onPausedChange(paused) { pausedBannerEl.hidden = !paused; },
             onTrim(delta) {
-                // Front segments were evicted and the rendered content
-                // shrank by `delta` px. Because translateY is animated by
-                // a 3 s CSS transition but contentHeight changed instantly,
-                // visible_bottom (= translateY + contentHeight) jumps up
-                // by `delta` and then crawls back over 3 s. Snap translateY
-                // forward by `delta` without a transition so the bottom
-                // stays put; the next updateDisplayPosition() then
-                // animates only the genuine new-segment delta.
+                // Front segments were evicted; content shrank by `delta` px
+                // instantly while translateY is still mid-animation. Snap
+                // translateY forward by delta (no transition) so the visible
+                // bottom stays put; ResizeObserver then animates the real delta.
                 if (delta <= 0) return;
                 const target = getCurrentTranslateY() + delta;
                 captionsInner.style.transition = 'none';
                 captionsInner.style.transform = `translateY(${target}px)`;
-                // Force a reflow so the no-transition assignment commits
-                // before the stylesheet's transition is restored.
-                void captionsInner.offsetHeight;
+                void captionsInner.offsetHeight; // flush before restoring transition
                 captionsInner.style.transition = '';
             },
         });

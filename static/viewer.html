@@ -687,6 +687,7 @@
 
         const SCROLL_BOTTOM_THRESHOLD = 80;  // px from bottom still considered "at bottom"
         let userScrolledUp = false;
+        let isAutoScrolling = false;
         let fontSize = parseFloat(localStorage.getItem('fontSize')) || 1;
         let isDarkMode = localStorage.getItem('theme') !== 'light';
         let viewerMode = null;
@@ -873,6 +874,7 @@
                 cancelAnimationFrame(smoothScrollRAF);
                 smoothScrollRAF = null;
             }
+            isAutoScrolling = false;
         }
         function smoothScrollToBottom(durationMs = SMOOTH_SCROLL_DURATION_MS) {
             cancelSmoothScroll();
@@ -883,13 +885,14 @@
                 mainScrollEl.scrollTop = to;
                 return;
             }
+            isAutoScrolling = true;
             const start = performance.now();
             const step = now => {
                 const t = Math.min(1, (now - start) / durationMs);
                 const eased = 1 - Math.pow(1 - t, 3); // ease-out cubic
                 mainScrollEl.scrollTop = from + (to - from) * eased;
                 if (t < 1) smoothScrollRAF = requestAnimationFrame(step);
-                else smoothScrollRAF = null;
+                else { smoothScrollRAF = null; isAutoScrolling = false; }
             };
             smoothScrollRAF = requestAnimationFrame(step);
         }
@@ -901,9 +904,15 @@
             mainScrollEl.addEventListener(evt, cancelSmoothScroll, { passive: true });
         });
 
+        let _scrollTimer = null;
         function onNewBlock() {
             emptyStateEl.style.display = 'none';
-            if (!userScrolledUp) smoothScrollToBottom();
+            // Debounce: collapse rapid adds (bulk history load) into one scroll
+            // so the animation doesn't restart repeatedly mid-flight.
+            clearTimeout(_scrollTimer);
+            _scrollTimer = setTimeout(() => {
+                if (!userScrolledUp) smoothScrollToBottom();
+            }, 50);
         }
 
         function switchVenue(venueId, { skipPushState = false } = {}) {
@@ -989,6 +998,9 @@
         });
 
         mainScrollEl.addEventListener('scroll', () => {
+            // Ignore scroll events we caused ourselves — only user-initiated
+            // scrolls should update userScrolledUp / show the jump button.
+            if (isAutoScrolling) return;
             if (isNearBottom()) {
                 userScrolledUp = false;
                 jumpBtn.classList.add('hidden');
