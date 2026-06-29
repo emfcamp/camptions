@@ -203,7 +203,7 @@
                above the footer / jump-to-bottom button while the user
                scrolls up to read history. Mirrors display.html's 6rem
                bottom margin. */
-            padding: 1rem 1rem 10rem;
+            padding: 1rem 1rem 6rem;
         }
 
         footer {
@@ -921,6 +921,24 @@
             mainScrollEl.addEventListener(evt, cancelSmoothScroll, { passive: true });
         });
 
+        // Track genuine scroll-causing input. Adding a large caption block
+        // momentarily clamps scrollTop (the tentative span is removed before
+        // the new block is appended), which fires a spurious `scroll` event;
+        // without this gate that event is mistaken for the user scrolling up
+        // and it cancels follow mode. Only wheel/touchmove/keydown — actual
+        // scroll gestures, not a bare tap — count, and the window is kept
+        // alive through touch momentum by the scroll handler below.
+        let userInteracting = false;
+        let _interactTimer = null;
+        function markUserInteracting() {
+            userInteracting = true;
+            clearTimeout(_interactTimer);
+            _interactTimer = setTimeout(() => { userInteracting = false; }, 1200);
+        }
+        ['wheel', 'touchmove', 'keydown'].forEach(evt => {
+            mainScrollEl.addEventListener(evt, markUserInteracting, { passive: true });
+        });
+
         let _scrollTimer = null;
         function onNewBlock() {
             emptyStateEl.style.display = 'none';
@@ -1062,9 +1080,12 @@
             if (isNearBottom()) {
                 userScrolledUp = false;
                 jumpBtn.classList.add('hidden');
-            } else {
+            } else if (userInteracting) {
+                // Detach from follow mode only when the user actually scrolled
+                // up — not when adding a caption block clamped scrollTop.
                 userScrolledUp = true;
                 jumpBtn.classList.remove('hidden');
+                markUserInteracting(); // keep the window alive through momentum
             }
         }, { passive: true });
 
