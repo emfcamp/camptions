@@ -226,6 +226,7 @@ class CaptionsClient {
 
     _onCommitted(sessionId, seq, text) {
         if (!text || !text.trim()) return;
+        this._clearTentative();
         const span = this._ensureSegment(sessionId, seq);
         span.textContent = text.trim() + ' ';
         this._trimSegments();
