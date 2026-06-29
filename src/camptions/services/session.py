@@ -182,8 +182,9 @@ class VenueSession:
     # to skip re-broadcasting ones we've already finalised.
     committed_starts: set[float] = field(default_factory=set)
 
-    # Last tentative text broadcast.
+    # Last tentative text broadcast and when it was sent (monotonic seconds).
     last_tentative: str = ""
+    last_tentative_sent_at: float = 0.0
 
     # Task handles set by AudioStreamer / TranscriptionProcessor.
     send_task: Optional[asyncio.Task] = None

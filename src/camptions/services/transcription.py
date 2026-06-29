@@ -156,6 +156,7 @@ class TranscriptionProcessor:
         # session so the ring-buffer audio replay doesn't re-emit finalised
         # segments. Only the in-progress tentative is reset.
         self.venue.last_tentative = ""
+        self.venue.last_tentative_sent_at = 0.0
 
     async def _broadcast(self, data: dict) -> None:
         """Emit committed/tentative captions from a WL segment response.
@@ -198,8 +199,10 @@ class TranscriptionProcessor:
         last = segments[-1]
         if not last.get("completed"):
             text = (last.get("text") or "").strip()
-            if text and text != venue.last_tentative:
+            now = time.monotonic()
+            if text and text != venue.last_tentative and now - venue.last_tentative_sent_at >= 0.5:
                 venue.last_tentative = text
+                venue.last_tentative_sent_at = now
                 await distribution_manager.broadcast(
                     venue.venue_id,
                     {
