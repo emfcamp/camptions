@@ -203,7 +203,13 @@ class CaptionsClient {
                 if (typeof data.transcription_enabled === 'boolean') {
                     this._setPaused(!data.transcription_enabled);
                 }
-                if (!this.paused) {
+                if (this.paused) {
+                    // _setPaused early-returns when the paused state is
+                    // unchanged (it survives reconnects), so restore the paused
+                    // status explicitly — otherwise a reconnect while paused
+                    // leaves the status stuck on "Connecting…".
+                    this.onStatus('paused', 'Transcription paused');
+                } else {
                     this.onStatus(
                         data.is_live ? 'live' : 'offline',
                         data.is_live ? 'Connected · Live' : 'Connected · Source Offline',
@@ -306,6 +312,10 @@ class CaptionsClient {
     }
 
     _onTentative(text) {
+        // Never render in-progress text while transcription is paused — the
+        // server shouldn't send it, but a late throttled flush could race the
+        // pause, and it must not appear under the paused banner.
+        if (this.paused) return;
         // While a glide is animating, buffer the latest tentative instead of
         // rendering it; resumeTentative() flushes it once the glide settles.
         if (this._tentativePaused) {

@@ -229,6 +229,12 @@ class TranscriptionProcessor:
 
     async def _emit_tentative(self, text: str) -> None:
         venue = self.venue
+        # A throttled flush can fire up to ~1 s after it was scheduled; the
+        # venue may have been paused in that window. _broadcast guards the
+        # immediate path, but the delayed flush reaches here directly — drop it
+        # so a paused venue never emits a stray tentative under the banner.
+        if venue.paused:
+            return
         venue.last_tentative = text
         venue.last_tentative_sent_at = time.monotonic()
         await distribution_manager.broadcast(
