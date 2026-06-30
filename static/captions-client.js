@@ -241,23 +241,28 @@ class CaptionsClient {
                 this._setPaused(true);
                 return;
             case 'transcription_enabled':
-                this._setPaused(false);
+                this._setPaused(false, data.is_live);
                 return;
             default:
                 console.warn('CaptionsClient: unhandled message type', data.type);
         }
     }
 
-    _setPaused(paused) {
+    _setPaused(paused, isLive = false) {
         if (this.paused === paused) return;
         this.paused = paused;
         if (paused) {
             this._clearTentative();
             this.onStatus('paused', 'Transcription paused');
+        } else if (isLive) {
+            // The source was streaming all along — go straight back to Live.
+            // Without the server's is_live hint we'd stick on "offline" until
+            // the next venue_live, which never comes for an unchanged session.
+            this.onStatus('live', 'Connected · Live');
         } else {
-            // After un-pausing we revert to "offline" until the next
-            // venue_live/connected message refines it. A new Pi session is
-            // also a new session_id, so committed history is preserved.
+            // Source genuinely offline; the next venue_live/connected refines it.
+            // A new Pi session is also a new session_id, so committed history
+            // is preserved.
             this.onStatus('offline', 'Connected · Source Offline');
         }
         this.onPausedChange(paused);

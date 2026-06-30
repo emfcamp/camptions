@@ -159,12 +159,20 @@ async def update_venue(
         # process_audio drops incoming audio and no captions are produced.
         if _transcription_manager is not None:
             _transcription_manager.set_paused(venue_id, not transcription_enabled)
+        is_live = (
+            _transcription_manager is not None
+            and _transcription_manager.is_live(venue_id)
+        )
         await distribution_manager.broadcast(
             venue_id,
             {
                 "type": "transcription_disabled" if not transcription_enabled
                         else "transcription_enabled",
                 "venue_id": venue_id,
+                # Tell subscribers the venue's actual live state so re-enabling
+                # transcription resolves straight to Live/Source Offline rather
+                # than getting stuck on "offline" until the next venue_live.
+                "is_live": is_live,
                 "timestamp": datetime.now(UTC).isoformat(),
             },
         )
