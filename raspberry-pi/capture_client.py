@@ -236,7 +236,14 @@ async def _wait_for_audio(audio: AudioCapture, stop_event: asyncio.Event) -> boo
 
 
 async def _watch_stdin(stop_event: asyncio.Event, request_stop) -> None:
-    """Trigger stop on Ctrl-D (EOF) or `q`/`quit`/`exit` on stdin."""
+    """Trigger stop on Ctrl-D (EOF) or `q`/`quit`/`exit` on stdin.
+
+    No-op when stdin isn't a TTY (e.g. running under systemd, where stdin is
+    `/dev/null`): epoll can't watch a device fd, so connect_read_pipe() fails
+    with EPERM, and there's no interactive input to read on a service anyway.
+    """
+    if not sys.stdin.isatty():
+        return
     loop = asyncio.get_running_loop()
     reader = asyncio.StreamReader()
     try:
@@ -342,6 +349,13 @@ async def run_capture(
 
 
 def main():
+    # stdout is fully block-buffered when not a TTY (e.g. under systemd), so
+    # without this, every print() — the only diagnostics this client has for
+    # what the reconnect loop is doing — can sit unflushed indefinitely and
+    # never reach `journalctl`.
+    with contextlib.suppress(Exception):
+        sys.stdout.reconfigure(line_buffering=True)
+
     parser = argparse.ArgumentParser(description="EMF Camptions Audio Capture Client")
     parser.add_argument(
         "--server", "-s",
