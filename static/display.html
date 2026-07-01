@@ -167,10 +167,7 @@
             right: 0;
             line-height: var(--line-height);
             pointer-events: none;
-            /* Tentative rendering is paused for the duration of this glide
-               (see beginGlide / GLIDE_MS), so the layer is never repainted
-               mid-motion. Keep GLIDE_MS in sync with this duration. */
-            transition: transform 1s ease-out;
+            transition: transform 3s ease-out;
             transform: translateY(0);
             will-change: transform;
         }
@@ -244,19 +241,6 @@
         // it back down.
         let _lastTranslateY = 0;
 
-        // While a glide animates we pause tentative DOM updates so the
-        // scrolling layer isn't repainted mid-motion — the Pi GPU can't
-        // smoothly slide a layer while re-rasterizing it. Tentative text keeps
-        // arriving (buffered, latest wins) and is flushed when the glide
-        // settles. GLIDE_MS must match the CSS transition on #captionsInner.
-        const GLIDE_MS = 1000;
-        let _glideResumeTimer = null;
-        function beginGlide() {
-            client.pauseTentative();
-            clearTimeout(_glideResumeTimer);
-            _glideResumeTimer = setTimeout(() => client.resumeTentative(), GLIDE_MS);
-        }
-
         function getLineHeight() {
             if (!lineHeightPx) lineHeightPx = parseFloat(getComputedStyle(document.body).lineHeight);
             return lineHeightPx;
@@ -278,7 +262,6 @@
                 // positive) than where it already is.
                 target = Math.min(target, _lastTranslateY);
                 captionsInner.style.transform = `translateY(${target}px)`;
-                beginGlide();
             }
             _lastTranslateY = target;
         }
@@ -303,6 +286,25 @@
             try { return new DOMMatrix(t).m42; } catch { return 0; }
         }
 
+        // Silence indicator: once 120 s pass with no new committed/tentative
+        // text, insert a blank line every 15 s so the display keeps visibly
+        // advancing rather than looking frozen. Keeps running while paused —
+        // it's driven purely by wall-clock silence, not connection state.
+        // Caps at maxLines (20) blank lines: by then every real caption has
+        // already scrolled off, so inserting more would have no visible
+        // effect.
+        const SILENCE_THRESHOLD_MS = 120_000;
+        const BLANK_LINE_INTERVAL_MS = 15_000;
+        const MAX_BLANK_LINES = 20;
+        let lastContentTime = Date.now();
+        let blankLinesInserted = 0;
+        setInterval(() => {
+            if (Date.now() - lastContentTime < SILENCE_THRESHOLD_MS) return;
+            if (blankLinesInserted >= MAX_BLANK_LINES) return;
+            client.forceNewLine();
+            blankLinesInserted += 1;
+        }, BLANK_LINE_INTERVAL_MS);
+
         const client = new CaptionsClient({
             venue,
             containerEl: captionsInner,
@@ -322,9 +324,16 @@
             onSessionStart() {
                 captionsInner.style.transform = 'translateY(0)';
                 _lastTranslateY = 0;
+                lastContentTime = Date.now();
+                blankLinesInserted = 0;
             },
             onSessionEnd() {},
-            onNewBlock() {},  // ResizeObserver handles position updates
+            onNewBlock() {
+                // Real content (committed or tentative) arrived — reset the
+                // silence clock. ResizeObserver handles position updates.
+                lastContentTime = Date.now();
+                blankLinesInserted = 0;
+            },
             onPausedChange(paused) { pausedBannerEl.hidden = !paused; },
             onTrim(delta) {
                 // Front segments were evicted; content shrank by `delta` px

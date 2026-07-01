@@ -51,7 +51,7 @@ class TranscriptionProcessor:
     def __init__(self, venue: VenueSession, settings: Settings) -> None:
         self.venue = venue
         self.settings = settings
-        # Trailing-edge flush for tentative captions throttled by the 1 s
+        # Trailing-edge flush for tentative captions throttled by the 0.5 s
         # rate limit, so the latest in-progress text is never dropped.
         self._tentative_flush: Optional[asyncio.Task] = None
 
@@ -218,18 +218,18 @@ class TranscriptionProcessor:
             return
 
         elapsed = time.monotonic() - venue.last_tentative_sent_at
-        if elapsed >= 1.0:
+        if elapsed >= 0.5:
             # A fresh update supersedes any text waiting on a trailing flush.
             self._cancel_tentative_flush()
             await self._emit_tentative(text)
         else:
-            # Throttled: schedule the latest text to be flushed once the 1 s
+            # Throttled: schedule the latest text to be flushed once the 0.5 s
             # window elapses so the final update is never silently dropped.
-            self._schedule_tentative_flush(text, 1.0 - elapsed)
+            self._schedule_tentative_flush(text, 0.5 - elapsed)
 
     async def _emit_tentative(self, text: str) -> None:
         venue = self.venue
-        # A throttled flush can fire up to ~1 s after it was scheduled; the
+        # A throttled flush can fire up to ~0.5 s after it was scheduled; the
         # venue may have been paused in that window. _broadcast guards the
         # immediate path, but the delayed flush reaches here directly — drop it
         # so a paused venue never emits a stray tentative under the banner.

@@ -83,11 +83,6 @@ class CaptionsClient {
         /** @type {boolean} true when admin has disabled transcription for this venue */
         this.paused = false;
 
-        /** @type {boolean} when true, tentative updates are buffered, not rendered */
-        this._tentativePaused = false;
-        /** @type {string|undefined} latest tentative text withheld while paused */
-        this._pendingTentative = undefined;
-
         // Line-mode state.
         /** @type {HTMLElement[]} frozen + in-progress .caption-line blocks, oldest first */
         this.lines = [];
@@ -141,28 +136,6 @@ class CaptionsClient {
     reconnect() {
         this.reconnectAttempts = 0;
         this._connect();
-    }
-
-    // ── Tentative render gating ──────────────────────────────────────────────
-    // Callers driving a scroll animation can pause tentative rendering for the
-    // duration of the glide. Tentative messages keep arriving but are buffered
-    // (latest wins) instead of written to the DOM, so the scrolling layer isn't
-    // repainted mid-motion. resumeTentative() flushes the latest buffered text.
-
-    /** Buffer tentative updates instead of rendering them. */
-    pauseTentative() {
-        this._tentativePaused = true;
-    }
-
-    /** Resume tentative rendering and flush the latest buffered update, if any. */
-    resumeTentative() {
-        if (!this._tentativePaused) return;
-        this._tentativePaused = false;
-        if (this._pendingTentative !== undefined) {
-            const text = this._pendingTentative;
-            this._pendingTentative = undefined;
-            this._onTentative(text);
-        }
     }
 
     // ── WebSocket lifecycle ──────────────────────────────────────────────────
@@ -292,9 +265,6 @@ class CaptionsClient {
 
     _onCommitted(sessionId, seq, text) {
         if (!text || !text.trim()) return;
-        // A committed segment supersedes any buffered tentative — drop it so we
-        // don't later flush stale in-progress text that overlaps this segment.
-        this._pendingTentative = undefined;
         this._clearTentative();
         if (this._lineMode) {
             const key = `${sessionId ?? '_'}:${seq}`;
@@ -316,12 +286,6 @@ class CaptionsClient {
         // server shouldn't send it, but a late throttled flush could race the
         // pause, and it must not appear under the paused banner.
         if (this.paused) return;
-        // While a glide is animating, buffer the latest tentative instead of
-        // rendering it; resumeTentative() flushes it once the glide settles.
-        if (this._tentativePaused) {
-            this._pendingTentative = text;
-            return;
-        }
         if (!text || !text.trim()) {
             this._clearTentative();
             return;
@@ -435,6 +399,22 @@ class CaptionsClient {
         this._singleLineHeight = 0; // metrics changed — force a re-measure
         if (text) this._appendCommittedText(text);
         if (tentative) this._onTentative(tentative);
+    }
+
+    /**
+     * Force a blank line onto the display (line mode only). Used by callers
+     * that want to show a visual gap during silence — the current line is
+     * left untouched (frozen) and a fresh empty row is appended and trimmed
+     * like any other line. Does not fire onNewBlock: a forced blank line
+     * isn't "content", so callers tracking silence via onNewBlock won't have
+     * their own timers reset by it.
+     */
+    forceNewLine() {
+        if (!this._lineMode) return;
+        const line = this._startNewLine();
+        line.textContent = ' '; // non-breaking space so the empty row still has height
+        this.currentLine = null; // next real content starts a fresh line, not this one
+        this._trimLines();
     }
 
     _clearTentative() {
