@@ -472,7 +472,11 @@ class CaptionsClient {
     async _loadHistory() {
         if (this.historyLimit <= 0) return;
         try {
-            const url = `/api/captions/history/${this.venue}?limit=${this.historyLimit}`;
+            // order=desc so `limit` bounds the *most recent* N segments — the
+            // server default (asc) would instead return the oldest N ever
+            // recorded for this venue. Reverse back to chronological order
+            // below since _onCommitted expects oldest-first.
+            const url = `/api/captions/history/${this.venue}?limit=${this.historyLimit}&order=desc`;
             const res = await fetch(url);
             if (!res.ok) return;
             const { segments = [] } = await res.json();
@@ -483,7 +487,7 @@ class CaptionsClient {
             if (this._lineMode && document.fonts?.ready) {
                 await document.fonts.ready;
             }
-            for (const s of segments.filter(s => s.text && s.text.trim())) {
+            for (const s of segments.filter(s => s.text && s.text.trim()).reverse()) {
                 const seq = s.sequence ?? -(this.segmentMap.size + 1);
                 this._onCommitted(s.session_id ?? null, seq, s.text);
             }
