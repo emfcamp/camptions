@@ -5,20 +5,11 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Electromagnetic Field 2026 — Live Captions</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Raleway:wght@400;600;700&display=swap" rel="stylesheet">
+    <!-- Yes, this was vibe coded, Claude is great. -->
+    <link rel="stylesheet" href="/static/shared.css">
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
-
         :root {
-            --bg-color: #000000;
-            --text-color: #ffffff;
-            --tentative-opacity: 0.6;
+            --bg-image: url('/static/bg-3.png');
             --font-size: 3vw;
             --line-height: 1.4;
             --padding: 2rem;
@@ -41,18 +32,6 @@
             overflow: hidden;
         }
 
-        body::before {
-            content: '';
-            position: fixed;
-            inset: 0;
-            background-image: url('/static/bg-3.png');
-            background-size: cover;
-            background-position: center;
-            opacity: 0.1;
-            pointer-events: none;
-            z-index: 0;
-        }
-
         #qrCode {
             position: fixed;
             bottom: 1rem;
@@ -72,13 +51,13 @@
             z-index: 100;
         }
 
-        #status.live        { background: #2AE28C; color: #000730; }
-        #status.offline     { background: #5a6580; color: #fff; }
-        #status.disconnected { background: #F5515E; color: #fff; }
-        #status.paused      { background: #F9E200; color: #000730; }
+        #status.live         { background: var(--success-color); color: var(--on-accent-color); }
+        #status.offline      { background: #5a6580; color: var(--text-color); }
+        #status.disconnected { background: var(--error-color); color: var(--text-color); }
+        #status.paused       { background: var(--warning-color); color: var(--on-accent-color); }
         #status.reconnecting {
-            background: #F9E200;
-            color: #000730;
+            background: var(--warning-color);
+            color: var(--on-accent-color);
             animation: pulse 1s infinite;
         }
 
@@ -90,7 +69,7 @@
             bottom: 1.5rem;
             left: 50%;
             transform: translateX(-50%);
-            color: #F9E200;
+            color: var(--warning-color);
             font-size: 2.5vw;
             font-weight: 700;
             text-transform: uppercase;
@@ -103,11 +82,6 @@
         }
 
         #pausedBanner[hidden] { display: none; }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; }
-            50%       { opacity: 0.5; }
-        }
 
         /* Caption area — fixed viewport, clips overflow at top.
            The perspective tapers the text inward at the top (Star Wars
@@ -172,21 +146,12 @@
             will-change: transform;
         }
 
-        /* Each frozen caption line is its own block (one visual row), so
-           purging whole lines off the top never reflows the lines below. */
-        .caption-line {
-            display: block;
-        }
-
-        /* Committed segments and the trailing tentative both flow inline. */
+        /* Segments need pointer-events restored — #captionsInner disables
+           them so the perspective/scroll transform doesn't intercept taps,
+           but individual caption text should still be selectable. */
         .caption-segment {
             pointer-events: auto;
         }
-
-        .caption-tentative {
-            opacity: var(--tentative-opacity);
-        }
-
 </style>
 </head>
 
@@ -201,7 +166,7 @@
     <div id="topFade" aria-hidden="true"></div>
     <div id="qrCode" aria-hidden="true"></div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+    <script src="/static/qrcode.min.js"></script>
     <script src="/static/captions-client.js"></script>
     <script>
         const params = new URLSearchParams(location.search);
@@ -346,10 +311,9 @@
                 captionsInner.style.transform = `translateY(${target}px)`;
                 void captionsInner.offsetHeight; // flush before restoring transition
                 captionsInner.style.transition = '';
-                // Front segments were evicted, so content shrank by `delta`;
-                // the recomputed target will legitimately move down by the same
-                // amount to keep the bottom static. Raise the clamp baseline so
-                // the upward-only clamp doesn't block that compensation.
+                // Raise the clamp baseline by the same delta, so the
+                // upward-only clamp in applyTransform() doesn't block the
+                // legitimate downward move this eviction just caused.
                 _lastTranslateY += delta;
             },
         });

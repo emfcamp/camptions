@@ -90,7 +90,7 @@ class CaptionHistoryResponse(BaseModel):
     segments: list[SegmentResponse]
 
 
-# ── Public API response models ────────────────────────────────────────────────
+# Public API response models
 # These shapes are part of the documented public contract — keep them stable.
 # Internal admin responses can keep using ad-hoc dicts.
 

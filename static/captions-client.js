@@ -138,7 +138,7 @@ class CaptionsClient {
         this._connect();
     }
 
-    // ── WebSocket lifecycle ──────────────────────────────────────────────────
+    // WebSocket lifecycle
 
     _connect() {
         if (this._destroyed) return;
@@ -165,7 +165,7 @@ class CaptionsClient {
         this._reconnectTimer = setTimeout(() => this._connect(), delay);
     }
 
-    // ── Message dispatch ─────────────────────────────────────────────────────
+    // Message dispatch
 
     _handleMessage(data) {
         switch (data.type) {
@@ -247,7 +247,7 @@ class CaptionsClient {
         this.onPausedChange(paused);
     }
 
-    // ── Session tracking ─────────────────────────────────────────────────────
+    // Session tracking
     // Segments are keyed by (session_id, sequence), so a new session never
     // overwrites an older session's slots. We never clear on session
     // change — viewers want continuity across Pi reconnects, talk
@@ -257,7 +257,7 @@ class CaptionsClient {
         this.currentSessionId = sessionId;
     }
 
-    // ── Segment rendering ────────────────────────────────────────────────────
+    // Segment rendering
     // Committed segments are appended as inline <span>s into containerEl, so
     // captions flow as continuous text rather than one block per segment.
     // The tentative is a trailing <span> that's replaced (or removed) in
@@ -306,7 +306,7 @@ class CaptionsClient {
         this.onNewBlock(this.tentativeSpan);
     }
 
-    // ── Line-mode rendering ──────────────────────────────────────────────────
+    // Line-mode rendering
     // Committed words are appended to the current line; when a word tips the
     // line onto a second visual row, it's moved to a fresh line so every
     // committed line is exactly one row tall. Whole lines past maxLines are
@@ -467,7 +467,7 @@ class CaptionsClient {
         }
     }
 
-    // ── History ──────────────────────────────────────────────────────────────
+    // History
 
     async _loadHistory() {
         if (this.historyLimit <= 0) return;

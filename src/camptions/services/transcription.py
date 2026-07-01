@@ -2,7 +2,7 @@
 
 Per-venue lifecycle:
 
-    Pi audio WS  ──►  process_audio()  ──►  audio_queue
+    Pi audio WS  -->  process_audio()  -->  audio_queue
                                                   │
                                                   ▼
                                          AudioStreamer._send_loop

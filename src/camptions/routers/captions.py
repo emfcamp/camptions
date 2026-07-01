@@ -36,7 +36,7 @@ def set_ws_limiter(limiter) -> None:
     _ws_limiter = limiter
 
 
-# ── Streaming endpoints ──────────────────────────────────────────────────────
+# Streaming endpoints
 
 
 _STREAM_DOC = """
@@ -190,7 +190,7 @@ async def caption_stream_sse(venue_id: str) -> StreamingResponse:
     )
 
 
-# ── History endpoint ─────────────────────────────────────────────────────────
+# History endpoint
 
 
 def _encode_cursor(s: Segment) -> str:
