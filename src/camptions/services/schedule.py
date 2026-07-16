@@ -2,6 +2,8 @@
 
 import asyncio
 import logging
+import re
+import unicodedata
 from datetime import datetime, timezone
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -12,7 +14,11 @@ from .distribution import distribution_manager
 
 logger = logging.getLogger(__name__)
 
-EMF_NOW_AND_NEXT_URL = "https://www.emfcamp.org/schedule/now-and-next.json"
+# Full schedule (all talks, all occurrences) — the trimmed now-and-next.json
+# only exposes ~1-2 upcoming items per venue and can omit things already in
+# progress (verified live: it can miss a talk that's currently on stage).
+# Bump the year each event.
+EMF_SCHEDULE_URL = "https://www.emfcamp.org/schedule/2026.json"
 POLL_INTERVAL = 60  # seconds
 
 # Camp runs on UK local time; upstream occurrence dates are naive local time.
@@ -29,15 +35,14 @@ def _parse_dt(value: str | None) -> datetime | None:
         return None
 
 
-def _occurrence(talk: dict[str, Any]) -> dict[str, Any]:
-    """The talk's relevant occurrence — upstream always gives exactly one here."""
-    occurrences = talk.get("occurrences") or []
-    return occurrences[0] if occurrences else {}
+def _slugify(name: str) -> str:
+    """Match the venue_id scheme used throughout camptions (e.g. "Stage A" -> "stage-a")."""
+    ascii_name = unicodedata.normalize("NFKD", name).encode("ascii", "ignore").decode("ascii")
+    return re.sub(r"[^a-z0-9]+", "-", ascii_name.lower()).strip("-")
 
 
-def _parse_talk(talk: dict[str, Any]) -> dict[str, Any]:
-    """Extract relevant fields from a talk object."""
-    occ = _occurrence(talk)
+def _parse_talk(talk: dict[str, Any], occ: dict[str, Any]) -> dict[str, Any]:
+    """Extract relevant fields from a talk object and the occurrence in question."""
     return {
         "title": talk.get("title", ""),
         "speaker": talk.get("names", "") or "",
@@ -85,35 +90,44 @@ class ScheduleService:
     async def _fetch_and_update(self) -> None:
         """Fetch schedule data and broadcast changes to venue subscribers."""
         try:
-            resp = await self._client.get(EMF_NOW_AND_NEXT_URL)
+            resp = await self._client.get(EMF_SCHEDULE_URL)
             resp.raise_for_status()
-            data = resp.json()
+            talks = resp.json()
         except Exception as e:
             logger.warning("Failed to fetch EMF schedule: %s", e)
             return
 
-        for venue_id, talks in data.items():
-            if not isinstance(talks, list):
-                continue
-
-            # Upstream just lists each venue's upcoming occurrences in order —
-            # there's no "in progress" flag, so talks[0] is not necessarily
-            # happening now. Only call something "now" if the current time
-            # actually falls inside its occurrence window; the first talk
-            # that hasn't started yet is "next" (already sorted ascending).
-            now_dt = datetime.now(EMF_TZ)
-            now = None
-            next_ = None
-            for talk in talks:
-                start = _parse_dt(_occurrence(talk).get("start_date"))
-                end = _parse_dt(_occurrence(talk).get("end_date"))
+        # Flatten every talk's occurrences into per-venue lists — a talk can
+        # recur (e.g. a daily workshop), so there's no single "the"
+        # occurrence for it, and the currently-active one for a venue isn't
+        # necessarily tied to the first talk in the raw list.
+        by_venue: dict[str, list[tuple[datetime, datetime, dict, dict]]] = {}
+        for talk in talks:
+            for occ in talk.get("occurrences") or []:
+                start = _parse_dt(occ.get("start_date"))
+                end = _parse_dt(occ.get("end_date"))
                 if start is None or end is None:
                     continue
+                venue_id = _slugify(occ.get("venue", ""))
+                if not venue_id:
+                    continue
+                by_venue.setdefault(venue_id, []).append((start, end, talk, occ))
+
+        now_dt = datetime.now(EMF_TZ)
+        for venue_id, occurrences in by_venue.items():
+            occurrences.sort(key=lambda o: o[0])
+
+            # Only call something "now" if the current time actually falls
+            # inside its occurrence window; the first one that hasn't
+            # started yet is "next".
+            now = None
+            next_ = None
+            for start, end, talk, occ in occurrences:
                 if now is None and start <= now_dt < end:
-                    now = _parse_talk(talk)
+                    now = _parse_talk(talk, occ)
                     continue
                 if start > now_dt:
-                    next_ = _parse_talk(talk)
+                    next_ = _parse_talk(talk, occ)
                     break
             entry = {"now": now, "next": next_}
 
