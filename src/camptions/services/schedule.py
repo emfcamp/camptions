@@ -4,6 +4,7 @@ import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any
+from zoneinfo import ZoneInfo
 
 import httpx
 
@@ -14,14 +15,34 @@ logger = logging.getLogger(__name__)
 EMF_NOW_AND_NEXT_URL = "https://www.emfcamp.org/schedule/now-and-next.json"
 POLL_INTERVAL = 60  # seconds
 
+# Camp runs on UK local time; upstream occurrence dates are naive local time.
+EMF_TZ = ZoneInfo("Europe/London")
+
+
+def _parse_dt(value: str | None) -> datetime | None:
+    """Parse an upstream `start_date`/`end_date` string as EMF-local time."""
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, "%Y-%m-%d %H:%M:%S").replace(tzinfo=EMF_TZ)
+    except ValueError:
+        return None
+
+
+def _occurrence(talk: dict[str, Any]) -> dict[str, Any]:
+    """The talk's relevant occurrence — upstream always gives exactly one here."""
+    occurrences = talk.get("occurrences") or []
+    return occurrences[0] if occurrences else {}
+
 
 def _parse_talk(talk: dict[str, Any]) -> dict[str, Any]:
     """Extract relevant fields from a talk object."""
+    occ = _occurrence(talk)
     return {
         "title": talk.get("title", ""),
-        "speaker": talk.get("speaker", ""),
-        "start_time": talk.get("start_time", ""),
-        "end_time": talk.get("end_time", ""),
+        "speaker": talk.get("names", "") or "",
+        "start_time": occ.get("start_time", ""),
+        "end_time": occ.get("end_time", ""),
         "description": talk.get("description", ""),
         "link": talk.get("link", ""),
     }
@@ -75,8 +96,25 @@ class ScheduleService:
             if not isinstance(talks, list):
                 continue
 
-            now = _parse_talk(talks[0]) if len(talks) > 0 else None
-            next_ = _parse_talk(talks[1]) if len(talks) > 1 else None
+            # Upstream just lists each venue's upcoming occurrences in order —
+            # there's no "in progress" flag, so talks[0] is not necessarily
+            # happening now. Only call something "now" if the current time
+            # actually falls inside its occurrence window; the first talk
+            # that hasn't started yet is "next" (already sorted ascending).
+            now_dt = datetime.now(EMF_TZ)
+            now = None
+            next_ = None
+            for talk in talks:
+                start = _parse_dt(_occurrence(talk).get("start_date"))
+                end = _parse_dt(_occurrence(talk).get("end_date"))
+                if start is None or end is None:
+                    continue
+                if now is None and start <= now_dt < end:
+                    now = _parse_talk(talk)
+                    continue
+                if start > now_dt:
+                    next_ = _parse_talk(talk)
+                    break
             entry = {"now": now, "next": next_}
 
             # Only broadcast when something has actually changed
