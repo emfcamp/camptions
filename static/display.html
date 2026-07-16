@@ -34,14 +34,6 @@
             overflow: hidden;
         }
 
-        #qrCode {
-            position: fixed;
-            bottom: 1rem;
-            right: 1rem;
-            z-index: 90;
-            opacity: 0.8;
-        }
-
         #status {
             position: fixed;
             top: 1rem;
@@ -85,6 +77,37 @@
 
         #pausedBanner[hidden] { display: none; }
 
+        /* Idle / first-load overlay — large centred call-to-action shown
+           until the first caption arrives, and again after 120s of
+           silence. Sits above the caption area (and its background photo)
+           so it fully covers them while visible, but below the status
+           badge / paused banner. */
+        #startOverlay {
+            position: fixed;
+            inset: 0;
+            z-index: 50;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2rem;
+            background: var(--bg-color);
+            transition: opacity 1s ease;
+            opacity: 1;
+        }
+
+        #startOverlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        #startMessage {
+            font-size: 2.5vw;
+            font-weight: 600;
+            text-align: center;
+            max-width: 80vw;
+        }
+
         /* Caption area — fixed viewport, clips overflow at top.
            The perspective tapers the text inward at the top (Star Wars
            crawl); the fade to black is done by #topFade, NOT a mask — a
@@ -99,6 +122,12 @@
             contain: layout size;
             perspective: 60vw;
             perspective-origin: center bottom;
+            transition: opacity 1s ease;
+            opacity: 1;
+        }
+
+        #captions.faded {
+            opacity: 0;
         }
 
         /* Static gradient overlay — the captions scroll underneath it, so the
@@ -166,7 +195,10 @@
         </div>
     </div>
     <div id="topFade" aria-hidden="true"></div>
-    <div id="qrCode" aria-hidden="true"></div>
+    <div id="startOverlay">
+        <div id="startMessage">Captions will be shown here and on your own devices:</div>
+        <div id="startQr" aria-hidden="true"></div>
+    </div>
 
     <script src="/static/qrcode.min.js"></script>
     <script src="/static/captions-client.js"></script>
@@ -177,10 +209,11 @@
         const fontSize = params.get('fontSize');
 
         const qrUrl = `https://stages.emf.camp/v/${encodeURIComponent(venue)}`;
-        new QRCode(document.getElementById('qrCode'), {
+        const qrSize = Math.round(Math.min(window.innerWidth, window.innerHeight) * 0.35);
+        new QRCode(document.getElementById('startQr'), {
             text: qrUrl,
-            width: 200,
-            height: 200,
+            width: Math.min(600, Math.max(220, qrSize)),
+            height: Math.min(600, Math.max(220, qrSize)),
             colorDark: '#ffffff',
             colorLight: '#000000',
             correctLevel: QRCode.CorrectLevel.L,
@@ -192,6 +225,7 @@
         const captionsViewport = document.getElementById('captions');
         const captionsInner = document.getElementById('captionsInner');
         const pausedBannerEl = document.getElementById('pausedBanner');
+        const startOverlayEl = document.getElementById('startOverlay');
 
         // ResizeObserver fires only when captionsInner's dimensions change (i.e.
         // text wraps to a new line), not on every text content update. This avoids
@@ -253,32 +287,45 @@
             try { return new DOMMatrix(t).m42; } catch { return 0; }
         }
 
-        // Silence indicator: once 120 s pass with no new committed/tentative
-        // text, insert a blank line every 15 s so the display keeps visibly
-        // advancing rather than looking frozen. Keeps running while paused —
-        // it's driven purely by wall-clock silence, not connection state.
-        // Caps at maxLines (20) blank lines: by then every real caption has
-        // already scrolled off, so inserting more would have no visible
-        // effect.
+        // Idle overlay state machine. The overlay (message + QR) is shown on
+        // first load, before any caption has arrived. Once real content
+        // shows up it fades out and the captions fade in. After 120s with no
+        // new committed/tentative text, the captions fade out, all rendered
+        // caption state is cleared, and the overlay fades back in — ready
+        // for the next talk.
         const SILENCE_THRESHOLD_MS = 120_000;
-        const BLANK_LINE_INTERVAL_MS = 15_000;
-        const MAX_BLANK_LINES = 20;
+        const FADE_MS = 1000; // keep in sync with the CSS transition duration above
         let lastContentTime = Date.now();
-        let blankLinesInserted = 0;
+        let silenceHandled = false; // true once we've faded+cleared for this silence
+        let overlayVisible = true;  // start showing the overlay pre-first-caption
+
+        function showOverlay() {
+            overlayVisible = true;
+            startOverlayEl.classList.remove('hidden');
+        }
+        function hideOverlay() {
+            if (!overlayVisible) return;
+            overlayVisible = false;
+            startOverlayEl.classList.add('hidden');
+            captionsViewport.classList.remove('faded');
+        }
         setInterval(() => {
+            if (silenceHandled || overlayVisible) return;
             if (Date.now() - lastContentTime < SILENCE_THRESHOLD_MS) return;
-            if (blankLinesInserted >= MAX_BLANK_LINES) return;
-            client.forceNewLine();
-            blankLinesInserted += 1;
-        }, BLANK_LINE_INTERVAL_MS);
+            silenceHandled = true;
+            captionsViewport.classList.add('faded');
+            setTimeout(() => {
+                client.clear();
+                showOverlay();
+            }, FADE_MS);
+        }, 1000);
 
         const client = new CaptionsClient({
             venue,
             containerEl: captionsInner,
-            // The big screen only needs a sliver of context — anything
-            // beyond a handful of lines just scrolls off the top anyway.
-            // Keep memory low for long-running display sessions.
-            historyLimit: 20,
+            // Skip history entirely — the idle overlay is the first thing
+            // shown, not a pre-filled wall of old captions.
+            historyLimit: 0,
             // Line mode: bake committed text into fixed single-row blocks and
             // purge whole lines off the top, so purging never reflows (and
             // jitters) the lines still on screen.
@@ -292,14 +339,14 @@
                 captionsInner.style.transform = 'translateY(0)';
                 _lastTranslateY = 0;
                 lastContentTime = Date.now();
-                blankLinesInserted = 0;
             },
             onSessionEnd() {},
             onNewBlock() {
                 // Real content (committed or tentative) arrived — reset the
-                // silence clock. ResizeObserver handles position updates.
+                // silence clock and reveal the captions.
                 lastContentTime = Date.now();
-                blankLinesInserted = 0;
+                silenceHandled = false;
+                hideOverlay();
             },
             onPausedChange(paused) { pausedBannerEl.hidden = !paused; },
             onTrim(delta) {

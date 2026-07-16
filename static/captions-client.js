@@ -401,20 +401,9 @@ class CaptionsClient {
         if (tentative) this._onTentative(tentative);
     }
 
-    /**
-     * Force a blank line onto the display (line mode only). Used by callers
-     * that want to show a visual gap during silence — the current line is
-     * left untouched (frozen) and a fresh empty row is appended and trimmed
-     * like any other line. Does not fire onNewBlock: a forced blank line
-     * isn't "content", so callers tracking silence via onNewBlock won't have
-     * their own timers reset by it.
-     */
-    forceNewLine() {
-        if (!this._lineMode) return;
-        const line = this._startNewLine();
-        line.textContent = ' '; // non-breaking space so the empty row still has height
-        this.currentLine = null; // next real content starts a fresh line, not this one
-        this._trimLines();
+    /** Publicly clear all rendered caption content (segments/lines/tentative). */
+    clear() {
+        this._clearAll();
     }
 
     _clearTentative() {
