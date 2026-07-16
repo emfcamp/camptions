@@ -55,33 +55,11 @@
             animation: pulse 1s infinite;
         }
 
-        /* Paused banner — large, centred between the brand mark and QR
-           code at the bottom of the display. Sits above the caption area
-           and is visually unmissable. */
-        #pausedBanner {
-            position: fixed;
-            bottom: 1.5rem;
-            left: 50%;
-            transform: translateX(-50%);
-            color: var(--warning-color);
-            font-size: 5vw;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 0.08em;
-            text-align: center;
-            text-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
-            z-index: 95;
-            pointer-events: none;
-            white-space: nowrap;
-        }
-
-        #pausedBanner[hidden] { display: none; }
-
         /* Idle / first-load overlay — large centred call-to-action shown
            until the first caption arrives, and again after 120s of
            silence. Sits above the caption area but leaves the shared
            background photo (body::before) visible, and stays below the
-           status badge / paused banner. */
+           status badge / paused overlay. */
         #startOverlay {
             position: fixed;
             inset: 0;
@@ -100,7 +78,29 @@
             pointer-events: none;
         }
 
-        #startMessage {
+        /* Paused overlay — same fullscreen fade treatment as #startOverlay
+           (and shares its message styling) but with no QR code, and sits
+           above it (z-index 60) so the two can never show at once. Starts
+           hidden: pausing isn't the default state. */
+        #pausedOverlay {
+            position: fixed;
+            inset: 0;
+            z-index: 60;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 2rem;
+            transition: opacity 1s ease;
+            opacity: 1;
+        }
+
+        #pausedOverlay.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        .overlay-message {
             font-size: 2.5vw;
             font-weight: 600;
             text-align: center;
@@ -187,7 +187,6 @@
 
 <body>
     <div id="status" class="disconnected">Connecting...</div>
-    <div id="pausedBanner" hidden>Transcription paused</div>
     <div id="captions" role="region" aria-live="polite" aria-label="Live captions">
         <div id="captionsStage">
             <div id="captionsInner"></div>
@@ -195,8 +194,11 @@
     </div>
     <div id="topFade" aria-hidden="true"></div>
     <div id="startOverlay">
-        <div id="startMessage">Captions will be shown here and on your own devices:</div>
+        <div class="overlay-message">Captions will be shown here and on your own devices:</div>
         <div id="startQr" aria-hidden="true"></div>
+    </div>
+    <div id="pausedOverlay" class="hidden">
+        <div class="overlay-message">Captions are paused for this talk/performance</div>
     </div>
 
     <script src="/static/qrcode.min.js"></script>
@@ -223,8 +225,8 @@
         const statusEl = document.getElementById('status');
         const captionsViewport = document.getElementById('captions');
         const captionsInner = document.getElementById('captionsInner');
-        const pausedBannerEl = document.getElementById('pausedBanner');
         const startOverlayEl = document.getElementById('startOverlay');
+        const pausedOverlayEl = document.getElementById('pausedOverlay');
 
         // ResizeObserver fires only when captionsInner's dimensions change (i.e.
         // text wraps to a new line), not on every text content update. This avoids
@@ -347,7 +349,19 @@
                 silenceHandled = false;
                 hideOverlay();
             },
-            onPausedChange(paused) { pausedBannerEl.hidden = !paused; },
+            onPausedChange(paused) {
+                if (paused) {
+                    pausedOverlayEl.classList.remove('hidden');
+                    startOverlayEl.classList.add('hidden');
+                    overlayVisible = false; // pausedOverlay is now the front-stage element
+                    captionsViewport.classList.add('faded');
+                    setTimeout(() => client.clear(), FADE_MS);
+                } else {
+                    pausedOverlayEl.classList.add('hidden');
+                    captionsViewport.classList.remove('faded'); // empty already, from the clear() above
+                    showOverlay(); // reveal the idle QR overlay; new content fades it out via onNewBlock as usual
+                }
+            },
             onTrim(delta) {
                 // Front segments were evicted; content shrank by `delta` px
                 // instantly while translateY is still mid-animation. Snap
