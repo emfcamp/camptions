@@ -79,9 +79,9 @@
 
         /* Idle / first-load overlay — large centred call-to-action shown
            until the first caption arrives, and again after 120s of
-           silence. Sits above the caption area (and its background photo)
-           so it fully covers them while visible, but below the status
-           badge / paused banner. */
+           silence. Sits above the caption area but leaves the shared
+           background photo (body::before) visible, and stays below the
+           status badge / paused banner. */
         #startOverlay {
             position: fixed;
             inset: 0;
@@ -91,7 +91,6 @@
             align-items: center;
             justify-content: center;
             gap: 2rem;
-            background: var(--bg-color);
             transition: opacity 1s ease;
             opacity: 1;
         }
